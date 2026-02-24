@@ -21,15 +21,21 @@ jobs:
             // Skip epic issues (they have different structure)
             if (labels.includes("type:epic")) return;
 
-            const requiredSections = [
-              "## In Scope",
-              "## Out of Scope",
-              "## Akzeptanzkriterien",
+            // Accept both German and English section headers, plus WP-Brief format
+            const requiredChecks = [
+              {
+                name: "In Scope / Files",
+                found: body.includes("## In Scope") || body.includes("## Files")
+              },
+              {
+                name: "Acceptance Criteria",
+                found: body.includes("## Akzeptanzkriterien") || body.includes("## Acceptance Criteria")
+              },
             ];
-            const sectionMissing = requiredSections.filter(s => !body.includes(s));
+            const sectionMissing = requiredChecks.filter(s => !s.found).map(s => s.name);
 
             const hasAcId = /AC-\d+/m.test(body);
-            const hasVerify = /Verify|Verify-Methode/i.test(body);
+            const hasVerify = /Verify|Verify-Methode|## Verify/i.test(body);
 
             const hasType = labels.some(l => l.startsWith("type:"));
             const hasSize = labels.some(l => l.startsWith("size:"));

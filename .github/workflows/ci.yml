@@ -77,7 +77,10 @@ jobs:
   # ── PR Gate: Zig Build + Test ────────────────────────────────────
   build-zig:
     runs-on: ubuntu-latest
-    if: needs.changes.outputs.docs-only != 'true'
+    if: >-
+      needs.changes.outputs.zig == 'true' ||
+      needs.changes.outputs.ci == 'true' ||
+      github.event_name == 'push'
     needs: [changes]
     steps:
       - uses: actions/checkout@v6
@@ -127,7 +130,10 @@ jobs:
   # ── PR Gate: UI Build + TypeCheck ────────────────────────────────
   build-ui:
     runs-on: ubuntu-latest
-    if: needs.changes.outputs.docs-only != 'true'
+    if: >-
+      needs.changes.outputs.ui == 'true' ||
+      needs.changes.outputs.ci == 'true' ||
+      github.event_name == 'push'
     needs: [changes]
     steps:
       - uses: actions/checkout@v6
@@ -147,15 +153,18 @@ jobs:
       - name: Type check
         run: cd ui && npm run check
 
-      # npm audit for security (advisory only, not blocking)
+      # npm audit blocks on high+ severity vulnerabilities
       - name: Security audit
-        run: cd ui && npm audit --audit-level=high || true
-        continue-on-error: true
+        run: cd ui && npm audit --audit-level=high
 
   # ── PR Gate: Security ────────────────────────────────────────────
   security:
     runs-on: ubuntu-latest
-    if: needs.changes.outputs.docs-only != 'true'
+    if: >-
+      needs.changes.outputs.zig == 'true' ||
+      needs.changes.outputs.ui == 'true' ||
+      needs.changes.outputs.ci == 'true' ||
+      github.event_name == 'push'
     needs: [changes]
     steps:
       - uses: actions/checkout@v6
@@ -167,4 +176,3 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
           GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}
-        continue-on-error: true
