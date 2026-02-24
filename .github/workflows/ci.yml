@@ -14,7 +14,7 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  # ── Gate: Changes Detection ──────────────────────────────────────
+  # ── Gate: Changes Detection + File Existence ────────────────────
   changes:
     runs-on: ubuntu-latest
     outputs:
@@ -22,8 +22,11 @@ jobs:
       ui: ${{ steps.filter.outputs.ui }}
       ci: ${{ steps.filter.outputs.ci }}
       docs-only: ${{ steps.filter.outputs.docs-only }}
+      has_zig: ${{ steps.exists.outputs.has_zig }}
+      has_ui: ${{ steps.exists.outputs.has_ui }}
     steps:
       - uses: actions/checkout@v6
+
       - uses: dorny/paths-filter@v3
         id: filter
         with:
@@ -43,6 +46,12 @@ jobs:
               - 'LICENSE'
               - '.editorconfig'
 
+      - name: Check file existence
+        id: exists
+        run: |
+          echo "has_zig=$( [ -f build.zig ] && echo true || echo false )" >> "$GITHUB_OUTPUT"
+          echo "has_ui=$( [ -f ui/package.json ] && echo true || echo false )" >> "$GITHUB_OUTPUT"
+
   # ── PR Gate: Lint (always runs) ──────────────────────────────────
   lint:
     runs-on: ubuntu-latest
@@ -60,13 +69,13 @@ jobs:
           fi
 
       - name: Check Zig formatting
-        if: (needs.changes.outputs.zig == 'true' || github.event_name == 'push') && hashFiles('build.zig') != ''
+        if: (needs.changes.outputs.zig == 'true' || github.event_name == 'push') && needs.changes.outputs.has_zig == 'true'
         uses: mlugg/setup-zig@v2
         with:
           version: 0.14.1
 
       - name: Run zig fmt --check
-        if: (needs.changes.outputs.zig == 'true' || github.event_name == 'push') && hashFiles('build.zig') != ''
+        if: (needs.changes.outputs.zig == 'true' || github.event_name == 'push') && needs.changes.outputs.has_zig == 'true'
         run: |
           if [ -d src/ ]; then
             find src/ -name '*.zig' -print0 | xargs -r -0 zig fmt --check 2>&1 || {
@@ -81,7 +90,7 @@ jobs:
   build-zig:
     runs-on: ubuntu-latest
     if: >-
-      hashFiles('build.zig') != '' &&
+      needs.changes.outputs.has_zig == 'true' &&
       (needs.changes.outputs.zig == 'true' ||
       needs.changes.outputs.ci == 'true' ||
       github.event_name == 'push')
@@ -135,7 +144,7 @@ jobs:
   build-ui:
     runs-on: ubuntu-latest
     if: >-
-      hashFiles('ui/package.json') != '' &&
+      needs.changes.outputs.has_ui == 'true' &&
       (needs.changes.outputs.ui == 'true' ||
       needs.changes.outputs.ci == 'true' ||
       github.event_name == 'push')
