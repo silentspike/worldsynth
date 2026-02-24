@@ -21,7 +21,7 @@ jobs:
             // Skip epic issues (they have different structure)
             if (labels.includes("type:epic")) return;
 
-            // Accept both German and English section headers, plus WP-Brief format
+            // Accept both section header variants (template format + WP-Brief format)
             const requiredChecks = [
               {
                 name: "In Scope / Files",
@@ -77,7 +77,7 @@ jobs:
                   owner, repo, issue_number,
                   body: "### Issue Quality Gate: Needs Spec\n\n" +
                         failures.map(f => `- ${f}`).join("\n") +
-                        "\n\nSetze das Issue erst auf `status:ready`, wenn alle Punkte erfuellt sind."
+                        "\n\nDo not set this issue to `status:ready` until all points above are resolved."
                 });
               }
             } else {
