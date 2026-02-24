@@ -39,8 +39,5 @@ Thumbs.db
 # CLAP SDK build
 clap-sdk/build/
 
-# Worktrees
+# Worktrees (local only, not tracked)
 .worktrees/
-
-# WP markers
-.wp-done/
