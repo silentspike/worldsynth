@@ -1,0 +1,206 @@
+name: Feature Request
+description: Propose a new feature for WorldSynth (Zig DSP, Svelte UI, CLAP Plugin)
+title: "[Feature]: "
+labels:
+  - "type:feature"
+  - "status:backlog"
+  - "quality:needs-spec"
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ## Feature Request
+
+        Thank you for proposing a new feature. Please fill out all required fields thoroughly.
+        Every feature must have measurable acceptance criteria and an evidence plan before work begins.
+
+  - type: dropdown
+    id: scope-mode
+    attributes:
+      label: Scope Mode
+      description: >
+        **scope:full** = Production path, all acceptance criteria enforced, full evidence required.
+        **scope:experimental** = Exploration/spike, reduced evidence requirements, may skip non-functional criteria.
+      options:
+        - "scope:full"
+        - "scope:experimental"
+    validations:
+      required: true
+
+  - type: textarea
+    id: problem-statement
+    attributes:
+      label: Problem Statement
+      description: >
+        What problem does this feature solve? Why is it needed?
+        Be specific about the user workflow or technical limitation being addressed.
+      placeholder: |
+        Currently WorldSynth only supports wavetable synthesis. Users working on
+        FM bass and bell sounds must use a separate plugin, breaking their workflow.
+        Adding an FM engine would allow complete sound design within a single instance.
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposed-solution
+    attributes:
+      label: Proposed Solution
+      description: >
+        Describe the proposed implementation. Include technical approach, architecture
+        decisions, and how it integrates with the existing codebase (Zig DSP, Svelte UI, CLAP).
+      placeholder: |
+        Add a 4-operator FM synthesis engine:
+        - New Zig module `src/dsp/fm_engine.zig` implementing 4-op FM with configurable algorithms
+        - 32 classic FM algorithms (DX7-compatible topology)
+        - Per-operator: ratio, detune, level, envelope (ADSR), feedback
+        - Svelte UI component `src/ui/components/FMEngine.svelte` with operator matrix visualization
+        - CLAP parameter mapping for all FM parameters
+        - Real-time algorithm switching without audio glitches
+    validations:
+      required: true
+
+  - type: textarea
+    id: in-scope
+    attributes:
+      label: In Scope
+      description: >
+        List the specific files, modules, and components that will be created or modified.
+        Use exact file paths where possible.
+      placeholder: |
+        - `src/dsp/fm_engine.zig` - New FM synthesis engine (create)
+        - `src/dsp/fm_algorithms.zig` - FM algorithm topologies (create)
+        - `src/dsp/engine.zig` - Engine registry, add FM engine variant (modify)
+        - `src/ui/components/FMEngine.svelte` - FM operator matrix UI (create)
+        - `src/ui/components/EngineSelector.svelte` - Add FM option (modify)
+        - `src/clap/params.zig` - FM parameter definitions (modify)
+        - `tests/dsp/test_fm_engine.zig` - FM engine unit tests (create)
+    validations:
+      required: true
+
+  - type: textarea
+    id: out-of-scope
+    attributes:
+      label: Out of Scope
+      description: >
+        Explicitly state what is NOT part of this feature. This prevents scope creep
+        and sets clear boundaries for the implementation.
+      placeholder: |
+        - DX7 SysEx preset import (separate feature)
+        - FM feedback loops beyond single-operator self-feedback
+        - Microtuning support (separate feature, applies to all engines)
+        - FM-specific effects (chorus, reverb)
+        - Mobile/touch UI optimizations
+    validations:
+      required: true
+
+  - type: textarea
+    id: dependencies
+    attributes:
+      label: Dependencies
+      description: >
+        List any prerequisites, blocking issues, or external dependencies.
+        Include both technical dependencies (libraries, APIs) and issue dependencies.
+      placeholder: |
+        - Requires engine abstraction layer (#12) to be merged first
+        - Requires CLAP parameter grouping support (#18)
+        - No external library dependencies (pure Zig DSP implementation)
+        - Svelte 5 runes API (already in use)
+    validations:
+      required: true
+
+  - type: textarea
+    id: acceptance-criteria
+    attributes:
+      label: Acceptance Criteria
+      description: >
+        Each criterion MUST have a unique AC-ID and a concrete verification method.
+        A criterion is only PASS when the verify method produces documented evidence.
+        "Code looks correct" is NOT evidence. Tests must run, measurements must be taken.
+      placeholder: |
+        - **AC-1**: FM engine produces correct sine-based FM output for all 32 algorithms.
+          _Verify_: Run `zig build test -- --filter fm_algorithm_output` -> all 32 pass with < 0.0001 error vs. reference.
+        - **AC-2**: Real-time algorithm switching produces no audio glitches.
+          _Verify_: Run `zig build test -- --filter fm_algorithm_switch_glitch_free` -> zero discontinuities detected.
+        - **AC-3**: FM engine CPU usage < 5% per voice at 44100Hz/128 buffer on reference hardware.
+          _Verify_: Run `zig build bench -- --filter fm_engine` -> CPU% per voice < 5%.
+        - **AC-4**: All FM parameters exposed as CLAP parameters and automatable.
+          _Verify_: Load in REAPER, verify parameter list, automate ratio -> smooth change. Screenshot attached.
+        - **AC-5**: Svelte UI renders operator matrix with real-time feedback visualization.
+          _Verify_: Screenshot of FM UI with active modulation routing visible.
+        - **AC-6**: FM engine integrates with existing preset save/load system.
+          _Verify_: Save preset with FM config, reload -> identical output. Test: `zig build test -- --filter fm_preset_roundtrip`.
+    validations:
+      required: true
+
+  - type: textarea
+    id: negative-criteria
+    attributes:
+      label: Negative Criteria
+      description: >
+        What must NOT happen as a result of this feature? Each negative criterion
+        needs an AC-N ID and a verification method. Minimum one entry required.
+      placeholder: |
+        - **AC-N1**: Adding FM engine must NOT increase binary size by more than 200KB.
+          _Verify_: Compare `wc -c` of CLAP binary before and after -> delta < 200KB.
+        - **AC-N2**: FM engine must NOT allocate memory in the audio processing thread.
+          _Verify_: Run `zig build test -- --filter fm_no_alloc` with allocator assertions -> pass.
+        - **AC-N3**: FM engine must NOT break existing wavetable engine tests.
+          _Verify_: Run `zig build test -- --filter wavetable` -> all existing tests pass.
+        - **AC-N4**: UI must NOT increase initial load time by more than 50ms.
+          _Verify_: Measure Svelte component mount time before/after -> delta < 50ms.
+    validations:
+      required: true
+
+  - type: textarea
+    id: evidence-plan
+    attributes:
+      label: Evidence Plan
+      description: >
+        How will each AC be verified before closing this issue?
+        Map each AC-ID to a concrete evidence artifact (test output, screenshot, measurement, recording).
+        The issue CANNOT be closed without all evidence collected.
+      placeholder: |
+        | AC-ID | Evidence Type       | Artifact                                         |
+        |-------|---------------------|--------------------------------------------------|
+        | AC-1  | Automated test      | CI log: all 32 algorithm tests pass              |
+        | AC-2  | Automated test      | CI log: glitch-free switch test pass             |
+        | AC-3  | Benchmark           | Benchmark output: CPU% per voice < 5%            |
+        | AC-4  | Manual verification | Screenshot: REAPER parameter list + automation   |
+        | AC-5  | Manual verification | Screenshot: FM UI with modulation routing        |
+        | AC-6  | Automated test      | CI log: preset roundtrip test pass               |
+        | AC-N1 | Measurement         | Binary size comparison output                    |
+        | AC-N2 | Automated test      | Allocator assertion test pass log                |
+        | AC-N3 | Automated test      | Wavetable test suite pass log                    |
+        | AC-N4 | Measurement         | Component mount time comparison                  |
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives-considered
+    attributes:
+      label: Alternatives Considered
+      description: >
+        What other approaches were considered and why were they rejected?
+      placeholder: |
+        1. **Wrapping an existing FM library (e.g., libfm):** Rejected because it adds
+           an external C dependency, complicates the Zig build, and limits optimization.
+        2. **2-operator FM only:** Rejected because 4-op is the minimum for musically
+           useful FM (bells, basses, keys) and the additional CPU cost is marginal.
+        3. **Phase modulation instead of frequency modulation:** Considered as technically
+           more stable, but the DX7-style FM is what users expect. May revisit for v2.
+    validations:
+      required: false
+
+  - type: textarea
+    id: additional-context
+    attributes:
+      label: Additional Context
+      description: >
+        Any additional context: mockups, reference implementations, research links,
+        audio examples, related issues, or user feedback.
+      placeholder: |
+        - Reference: Yamaha DX7 algorithm chart
+        - User request thread: Discord #feature-requests (2024-12-15)
+        - Similar implementation: Dexed (open source DX7 clone) for algorithm reference
+    validations:
+      required: false

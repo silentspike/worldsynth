@@ -1,0 +1,46 @@
+# Zig
+zig-cache/
+zig-out/
+.zig-cache/
+
+# Node/UI
+ui/node_modules/
+ui/dist/
+ui/.vite/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Secrets
+.env
+*.key
+*.pem
+
+# Build artifacts
+*.o
+*.so
+*.dylib
+*.dll
+*.clap
+
+# CLAP SDK build
+clap-sdk/build/
+
+# Worktrees
+.worktrees/
+
+# WP markers
+.wp-done/

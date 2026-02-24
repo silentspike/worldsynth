@@ -1,0 +1,9 @@
+# Default owner for everything
+* @obtFusi
+
+# CI/CD
+.github/ @obtFusi
+
+# Documentation
+*.md @obtFusi
+docs/ @obtFusi

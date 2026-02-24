@@ -1,0 +1,200 @@
+name: Bug Report
+description: Report a bug in WorldSynth (Zig DSP, Svelte UI, CLAP Plugin)
+title: "[Bug]: "
+labels:
+  - "type:bug"
+  - "status:backlog"
+  - "priority:high"
+  - "quality:needs-spec"
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ## Bug Report
+
+        Thank you for reporting a bug. Please fill out all required fields thoroughly.
+        Every bug must have measurable acceptance criteria and an evidence plan before work begins.
+
+  - type: dropdown
+    id: scope-mode
+    attributes:
+      label: Scope Mode
+      description: >
+        **scope:full** = Production path, all acceptance criteria enforced, full evidence required.
+        **scope:experimental** = Exploration/spike, reduced evidence requirements, may skip non-functional criteria.
+      options:
+        - "scope:full"
+        - "scope:experimental"
+    validations:
+      required: true
+
+  - type: textarea
+    id: bug-description
+    attributes:
+      label: Bug Description
+      description: >
+        Clear, concise description of the bug. Include what component is affected
+        (DSP engine, Svelte UI, CLAP host integration, build system, etc.).
+      placeholder: |
+        The wavetable oscillator produces audible clicks when morphing between frames
+        at buffer sizes below 256 samples. Affects the Zig DSP engine wavetable module.
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps-to-reproduce
+    attributes:
+      label: Steps to Reproduce
+      description: >
+        Numbered steps to reliably reproduce the bug. Include specific parameter values,
+        host DAW, buffer size, sample rate, and any other relevant configuration.
+      placeholder: |
+        1. Load WorldSynth in REAPER (CLAP, 44100 Hz, 128 samples buffer)
+        2. Select wavetable oscillator engine
+        3. Load "Analog Sweep" wavetable
+        4. Set morph position to 0.0
+        5. Hold a note (C3, velocity 100)
+        6. Automate morph position from 0.0 to 1.0 over 2 seconds
+        7. Listen for audible clicks/pops during morph transition
+    validations:
+      required: true
+
+  - type: textarea
+    id: in-scope
+    attributes:
+      label: In Scope
+      description: >
+        List the specific files, modules, and components that are relevant to this bug.
+        Use exact file paths where possible.
+      placeholder: |
+        - `src/dsp/wavetable.zig` - Wavetable oscillator morph interpolation
+        - `src/dsp/buffer.zig` - Audio buffer management
+        - `src/clap/process.zig` - CLAP audio processing callback
+    validations:
+      required: true
+
+  - type: textarea
+    id: out-of-scope
+    attributes:
+      label: Out of Scope
+      description: >
+        Explicitly state what is NOT part of this bug fix. This prevents scope creep.
+      placeholder: |
+        - UI wavetable visualizer (purely cosmetic, unrelated)
+        - Other oscillator engines (subtractive, FM, additive)
+        - Preset system
+        - Parameter persistence / state saving
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected-behavior
+    attributes:
+      label: Expected Behavior
+      description: >
+        What should happen instead? Must be measurable and verifiable.
+        Include specific thresholds where applicable (latency, CPU%, signal levels, etc.).
+      placeholder: |
+        Wavetable morph transitions should be click-free at all supported buffer sizes
+        (64-4096 samples). Signal should have no discontinuities exceeding +/- 0.001
+        in amplitude between consecutive frames during morph automation.
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual-behavior
+    attributes:
+      label: Actual Behavior
+      description: >
+        What actually happens? Include measurements, error messages, or audio artifacts observed.
+      placeholder: |
+        Audible clicks occur during morph transitions at buffer sizes <= 256 samples.
+        Peak discontinuity measured at +/- 0.12 amplitude between frames.
+        No clicks at buffer sizes >= 512 samples.
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: >
+        WorldSynth version, commit hash, or branch. Include host DAW and OS if relevant.
+      placeholder: "v0.1.0 / commit abc1234 / main branch / REAPER 7.x / Linux 6.x"
+    validations:
+      required: true
+
+  - type: textarea
+    id: additional-context
+    attributes:
+      label: Additional Context
+      description: >
+        Any additional context: screenshots, audio recordings, CPU profiles,
+        stack traces, related issues, or links to relevant documentation.
+      placeholder: |
+        - Audio recording of click artifact: [attached]
+        - CPU profile shows spike in wavetable_morph() during transition
+        - Related to #42 (buffer alignment issue)
+    validations:
+      required: false
+
+  - type: textarea
+    id: acceptance-criteria
+    attributes:
+      label: Acceptance Criteria
+      description: >
+        Each criterion MUST have a unique AC-ID and a concrete verification method.
+        A criterion is only PASS when the verify method produces documented evidence.
+        "Code looks correct" is NOT evidence. Tests must run, measurements must be taken.
+      placeholder: |
+        - **AC-1**: Wavetable morph produces zero clicks at 64-sample buffer size.
+          _Verify_: Run `zig build test -- --filter wavetable_morph_click_free_64` -> all pass.
+        - **AC-2**: Wavetable morph produces zero clicks at 128-sample buffer size.
+          _Verify_: Run `zig build test -- --filter wavetable_morph_click_free_128` -> all pass.
+        - **AC-3**: No amplitude discontinuity > +/- 0.001 between consecutive frames during morph.
+          _Verify_: Run `zig build test -- --filter wavetable_morph_continuity` -> max delta < 0.001.
+        - **AC-4**: CPU usage does not regress by more than 5% vs. baseline.
+          _Verify_: Run benchmark `zig build bench -- --filter wavetable` -> compare with baseline.
+        - **AC-5**: Fix verified in CLAP host (not just unit tests).
+          _Verify_: Load in REAPER, reproduce steps, confirm no clicks. Screenshot/recording attached.
+    validations:
+      required: true
+
+  - type: textarea
+    id: negative-criteria
+    attributes:
+      label: Negative Criteria
+      description: >
+        What must NOT happen as a result of this fix? Each negative criterion
+        needs an AC-N ID and a verification method. Minimum one entry required.
+      placeholder: |
+        - **AC-N1**: Fix must NOT introduce latency increase > 1 sample in the audio path.
+          _Verify_: Run latency measurement test -> delta vs. baseline <= 1 sample.
+        - **AC-N2**: Fix must NOT break other oscillator engines.
+          _Verify_: Run full oscillator test suite `zig build test -- --filter oscillator` -> all pass.
+        - **AC-N3**: Fix must NOT cause memory allocation in the audio thread.
+          _Verify_: Run `zig build test -- --filter wavetable_no_alloc` with allocator assertions -> pass.
+    validations:
+      required: true
+
+  - type: textarea
+    id: evidence-plan
+    attributes:
+      label: Evidence Plan
+      description: >
+        How will each AC be verified before closing this issue?
+        Map each AC-ID to a concrete evidence artifact (test output, screenshot, measurement, recording).
+        The issue CANNOT be closed without all evidence collected.
+      placeholder: |
+        | AC-ID | Evidence Type       | Artifact                                      |
+        |-------|---------------------|-----------------------------------------------|
+        | AC-1  | Automated test      | CI log: `wavetable_morph_click_free_64` pass  |
+        | AC-2  | Automated test      | CI log: `wavetable_morph_click_free_128` pass |
+        | AC-3  | Automated test      | CI log: max delta value < 0.001               |
+        | AC-4  | Benchmark           | Benchmark output: CPU% delta < 5%             |
+        | AC-5  | Manual verification | Screenshot/recording from REAPER session       |
+        | AC-N1 | Automated test      | Latency measurement output: delta <= 1 sample |
+        | AC-N2 | Automated test      | Full oscillator suite pass log                 |
+        | AC-N3 | Automated test      | Allocator assertion test pass log              |
+    validations:
+      required: true

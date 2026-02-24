@@ -1,0 +1,25 @@
+version: 2
+
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    labels:
+      - type:deps
+      - type:ci
+    commit-message:
+      prefix: "ci"
+      include: scope
+
+  - package-ecosystem: npm
+    directory: /ui
+    schedule:
+      interval: weekly
+      day: monday
+    labels:
+      - type:deps
+    commit-message:
+      prefix: "deps"
+      include: scope

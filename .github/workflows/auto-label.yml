@@ -1,0 +1,92 @@
+name: Auto Label
+
+on:
+  issues:
+    types: [opened]
+  pull_request_target:
+    types: [opened]
+
+permissions:
+  issues: write
+  pull-requests: write
+
+jobs:
+  label-issues:
+    if: github.event_name == 'issues'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Add backlog label
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh issue edit "${{ github.event.issue.number }}" --add-label "status:backlog"
+
+      - name: Add type label based on title
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ISSUE_TITLE: ${{ github.event.issue.title }}
+        run: |
+          TITLE=$(echo "$ISSUE_TITLE" | tr '[:upper:]' '[:lower:]')
+          LABEL=""
+
+          case "$TITLE" in
+            *bug*|*fix*|*broken*|*crash*|*error*)
+              LABEL="type:bug" ;;
+            *feat*|*add*|*new*|*implement*|*support*)
+              LABEL="type:feature" ;;
+            *doc*|*readme*|*guide*|*tutorial*)
+              LABEL="type:docs" ;;
+            *refactor*|*clean*|*restructure*)
+              LABEL="type:refactor" ;;
+            *perf*|*slow*|*fast*|*optim*|*latency*)
+              LABEL="type:perf" ;;
+            *test*|*spec*|*coverage*)
+              LABEL="type:test" ;;
+            *ci*|*cd*|*pipeline*|*workflow*|*deploy*)
+              LABEL="type:ci" ;;
+            *security*|*vuln*|*cve*|*auth*)
+              LABEL="type:security" ;;
+            *dep*|*upgrade*|*bump*|*update*)
+              LABEL="type:deps" ;;
+          esac
+
+          if [ -n "$LABEL" ]; then
+            gh issue edit "${{ github.event.issue.number }}" --add-label "$LABEL"
+          fi
+
+  label-prs:
+    if: github.event_name == 'pull_request_target'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Add type label based on PR title prefix
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+        run: |
+          # Extract conventional commit prefix (e.g. "feat" from "feat(dsp): add filter")
+          PREFIX=$(echo "$PR_TITLE" | sed -n 's/^\([a-z]*\)\(([^)]*)\)\?[!]\?:.*/\1/p')
+          LABEL=""
+
+          case "$PREFIX" in
+            feat)     LABEL="type:feature" ;;
+            fix)      LABEL="type:bug" ;;
+            docs)     LABEL="type:docs" ;;
+            style)    LABEL="type:style" ;;
+            refactor) LABEL="type:refactor" ;;
+            perf)     LABEL="type:perf" ;;
+            test)     LABEL="type:test" ;;
+            build)    LABEL="type:build" ;;
+            ci)       LABEL="type:ci" ;;
+            chore)    LABEL="type:chore" ;;
+            revert)   LABEL="type:revert" ;;
+            deps)     LABEL="type:deps" ;;
+            security) LABEL="type:security" ;;
+          esac
+
+          if [ -n "$LABEL" ]; then
+            gh pr edit "${{ github.event.pull_request.number }}" --add-label "$LABEL"
+          fi
