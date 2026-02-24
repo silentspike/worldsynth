@@ -2,9 +2,9 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [main, sprint-1, sprint-2, sprint-3, sprint-4]
   pull_request:
-    branches: [main]
+    branches: [main, sprint-1, sprint-2, sprint-3, sprint-4]
 
 permissions:
   contents: read
@@ -14,22 +14,71 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # ── Gate: Changes Detection ──────────────────────────────────────
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      zig: ${{ steps.filter.outputs.zig }}
+      ui: ${{ steps.filter.outputs.ui }}
+      ci: ${{ steps.filter.outputs.ci }}
+      docs-only: ${{ steps.filter.outputs.docs-only }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            zig:
+              - 'src/**'
+              - 'build.zig'
+              - 'build.zig.zon'
+              - 'clap-sdk/**'
+            ui:
+              - 'ui/**'
+            ci:
+              - '.github/**'
+            docs-only:
+              - '**/*.md'
+              - 'docs/**'
+              - 'LICENSE'
+              - '.editorconfig'
+
+  # ── PR Gate: Lint (always runs) ──────────────────────────────────
   lint:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
 
-      - name: Check for hidden Unicode characters
+      - name: Check for hidden Unicode/Bidi characters (CVE-2021-42574)
         run: |
           if grep -rP '[\x{200B}-\x{200F}\x{202A}-\x{202E}\x{2066}-\x{2069}]' \
             --include='*.zig' --include='*.ts' --include='*.js' --include='*.svelte' \
-            --include='*.yml' --include='*.yaml' --include='*.md' .; then
+            --include='*.yml' --include='*.yaml' --include='*.json' .; then
             echo "::error::Hidden Unicode/Bidi characters found!"
             exit 1
           fi
 
+      - name: Check Zig formatting
+        if: needs.changes.outputs.zig == 'true' || github.event_name == 'push'
+        uses: mlugg/setup-zig@v2
+        with:
+          version: 0.14.1
+
+      - name: Run zig fmt --check
+        if: needs.changes.outputs.zig == 'true' || github.event_name == 'push'
+        run: |
+          # Check all .zig files for formatting issues
+          find src/ -name '*.zig' -print0 | xargs -0 zig fmt --check 2>&1 || {
+            echo "::error::Zig formatting check failed. Run 'zig fmt' locally."
+            exit 1
+          }
+    needs: [changes]
+
+  # ── PR Gate: Zig Build + Test ────────────────────────────────────
   build-zig:
     runs-on: ubuntu-latest
+    if: needs.changes.outputs.docs-only != 'true'
+    needs: [changes]
     steps:
       - uses: actions/checkout@v6
         with:
@@ -39,14 +88,47 @@ jobs:
         with:
           version: 0.14.1
 
+      # Zig cache: .zig-cache/ and zig-cache/ directories
+      - uses: actions/cache@v4
+        with:
+          path: |
+            .zig-cache/
+            zig-cache/
+            ~/.cache/zig/
+          key: zig-${{ runner.os }}-${{ hashFiles('build.zig', 'build.zig.zon', 'src/**/*.zig') }}
+          restore-keys: |
+            zig-${{ runner.os }}-
+
+      # Install ALSA/JACK dev headers for audio I/O compilation
+      - name: Install audio dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends \
+            libasound2-dev \
+            libjack-jackd2-dev \
+            libwebkit2gtk-4.1-dev \
+            pkg-config
+
       - name: Build
         run: zig build
 
       - name: Test
         run: zig build test
 
+      # Build CLAP plugin artifact (verify it produces .clap)
+      - name: Verify CLAP plugin artifact
+        run: |
+          if [ -f zig-out/lib/worldsynth.clap ]; then
+            echo "CLAP plugin built: $(ls -lh zig-out/lib/worldsynth.clap)"
+          else
+            echo "::notice::No .clap artifact yet (expected until plugin build is implemented)"
+          fi
+
+  # ── PR Gate: UI Build + TypeCheck ────────────────────────────────
   build-ui:
     runs-on: ubuntu-latest
+    if: needs.changes.outputs.docs-only != 'true'
+    needs: [changes]
     steps:
       - uses: actions/checkout@v6
 
@@ -64,3 +146,25 @@ jobs:
 
       - name: Type check
         run: cd ui && npm run check
+
+      # npm audit for security (advisory only, not blocking)
+      - name: Security audit
+        run: cd ui && npm audit --audit-level=high || true
+        continue-on-error: true
+
+  # ── PR Gate: Security ────────────────────────────────────────────
+  security:
+    runs-on: ubuntu-latest
+    if: needs.changes.outputs.docs-only != 'true'
+    needs: [changes]
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Scan for secrets (gitleaks)
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}
+        continue-on-error: true

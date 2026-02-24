@@ -3,8 +3,12 @@ name: CodeQL
 on:
   push:
     branches: [main]
+    paths:
+      - 'ui/**'
   pull_request:
-    branches: [main]
+    branches: [main, sprint-1, sprint-2, sprint-3, sprint-4]
+    paths:
+      - 'ui/**'
   schedule:
     - cron: "23 4 * * 1" # Monday 04:23 UTC
 
@@ -24,7 +28,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # Zig is not supported by CodeQL; add languages here as support grows
+        # Zig is not supported by CodeQL; only scan UI TypeScript/Svelte
         language: [javascript-typescript]
 
     steps:

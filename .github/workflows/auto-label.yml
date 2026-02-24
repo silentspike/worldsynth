@@ -40,10 +40,6 @@ jobs:
               LABEL="type:docs" ;;
             *refactor*|*clean*|*restructure*)
               LABEL="type:refactor" ;;
-            *perf*|*slow*|*fast*|*optim*|*latency*)
-              LABEL="type:perf" ;;
-            *test*|*spec*|*coverage*)
-              LABEL="type:test" ;;
             *ci*|*cd*|*pipeline*|*workflow*|*deploy*)
               LABEL="type:ci" ;;
             *security*|*vuln*|*cve*|*auth*)
@@ -71,18 +67,14 @@ jobs:
           PREFIX=$(echo "$PR_TITLE" | sed -n 's/^\([a-z]*\)\(([^)]*)\)\?[!]\?:.*/\1/p')
           LABEL=""
 
+          # Only map to labels that actually exist in the repo
           case "$PREFIX" in
             feat)     LABEL="type:feature" ;;
             fix)      LABEL="type:bug" ;;
             docs)     LABEL="type:docs" ;;
-            style)    LABEL="type:style" ;;
             refactor) LABEL="type:refactor" ;;
-            perf)     LABEL="type:perf" ;;
-            test)     LABEL="type:test" ;;
-            build)    LABEL="type:build" ;;
             ci)       LABEL="type:ci" ;;
             chore)    LABEL="type:chore" ;;
-            revert)   LABEL="type:revert" ;;
             deps)     LABEL="type:deps" ;;
             security) LABEL="type:security" ;;
           esac
