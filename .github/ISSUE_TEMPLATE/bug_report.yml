@@ -1,0 +1,83 @@
+name: Bug Report
+description: Report a bug in WorldSynth
+title: "[Bug]: "
+labels:
+  - "type:bug"
+body:
+  - type: textarea
+    id: bug-description
+    attributes:
+      label: Bug Description
+      description: What went wrong? Describe the issue clearly.
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps-to-reproduce
+    attributes:
+      label: Steps to Reproduce
+      description: How can we reproduce this bug?
+      value: |
+        1.
+        2.
+        3.
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected-behavior
+    attributes:
+      label: Expected Behavior
+      description: What should have happened instead?
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual-behavior
+    attributes:
+      label: Actual Behavior
+      description: What actually happened?
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: WorldSynth Version
+      placeholder: "e.g. v0.1.0"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: format
+    attributes:
+      label: Format
+      options:
+        - CLAP Plugin
+        - Standalone
+    validations:
+      required: true
+
+  - type: input
+    id: daw
+    attributes:
+      label: DAW (if plugin)
+      placeholder: "e.g. Bitwig 5.3, REAPER 7.x"
+    validations:
+      required: false
+
+  - type: input
+    id: system
+    attributes:
+      label: System Info
+      placeholder: "e.g. Linux 6.x, AMD Ryzen, PipeWire"
+    validations:
+      required: true
+
+  - type: textarea
+    id: additional-context
+    attributes:
+      label: Additional Context
+      description: Screenshots, audio recordings, error messages, or anything else relevant.
+    validations:
+      required: false
