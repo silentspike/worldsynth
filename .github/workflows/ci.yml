@@ -16,7 +16,7 @@ concurrency:
 jobs:
   # ── Gate: Changes Detection + File Existence ────────────────────
   changes:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, worldsynth]
     outputs:
       zig: ${{ steps.filter.outputs.zig }}
       ui: ${{ steps.filter.outputs.ui }}
@@ -54,7 +54,7 @@ jobs:
 
   # ── PR Gate: Lint (always runs) ──────────────────────────────────
   lint:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, worldsynth]
     needs: [changes]
     steps:
       - uses: actions/checkout@v6
@@ -88,7 +88,7 @@ jobs:
 
   # ── PR Gate: Zig Build + Test ────────────────────────────────────
   build-zig:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, worldsynth]
     if: >-
       needs.changes.outputs.has_zig == 'true' &&
       (needs.changes.outputs.zig == 'true' ||
@@ -115,15 +115,8 @@ jobs:
           restore-keys: |
             zig-${{ runner.os }}-
 
-      # Install ALSA/JACK dev headers for audio I/O compilation
-      - name: Install audio dependencies
-        run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y --no-install-recommends \
-            libasound2-dev \
-            libjack-jackd2-dev \
-            libwebkit2gtk-4.1-dev \
-            pkg-config
+      # Audio deps (libasound2-dev, libjack-jackd2-dev, libwebkit2gtk-4.1-dev,
+      # pkg-config) are pre-installed on the self-hosted runner.
 
       - name: Build
         run: zig build
@@ -142,7 +135,7 @@ jobs:
 
   # ── PR Gate: UI Build + TypeCheck ────────────────────────────────
   build-ui:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, worldsynth]
     if: >-
       needs.changes.outputs.has_ui == 'true' &&
       (needs.changes.outputs.ui == 'true' ||
@@ -173,7 +166,7 @@ jobs:
 
   # ── PR Gate: Security ────────────────────────────────────────────
   security:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, worldsynth]
     if: >-
       needs.changes.outputs.zig == 'true' ||
       needs.changes.outputs.ui == 'true' ||
@@ -185,10 +178,7 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Install gitleaks
-        run: |
-          GITLEAKS_VERSION=$(curl -s https://api.github.com/repos/gitleaks/gitleaks/releases/latest | grep '"tag_name"' | sed 's/.*"v\(.*\)".*/\1/')
-          curl -sSfL "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz" | tar xz -C /usr/local/bin gitleaks
+      # gitleaks is pre-installed on the self-hosted runner.
 
       - name: Scan for secrets (gitleaks)
         run: gitleaks detect --source . --verbose --redact
