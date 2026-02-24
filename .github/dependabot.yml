@@ -13,13 +13,14 @@ updates:
       prefix: "ci"
       include: scope
 
-  - package-ecosystem: npm
-    directory: /ui
-    schedule:
-      interval: weekly
-      day: monday
-    labels:
-      - type:deps
-    commit-message:
-      prefix: "deps"
-      include: scope
+  # npm ecosystem will be enabled once ui/ directory is bootstrapped
+  # - package-ecosystem: npm
+  #   directory: /ui
+  #   schedule:
+  #     interval: weekly
+  #     day: monday
+  #   labels:
+  #     - type:deps
+  #   commit-message:
+  #     prefix: "deps"
+  #     include: scope

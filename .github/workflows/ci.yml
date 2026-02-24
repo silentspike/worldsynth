@@ -46,6 +46,7 @@ jobs:
   # ── PR Gate: Lint (always runs) ──────────────────────────────────
   lint:
     runs-on: ubuntu-latest
+    needs: [changes]
     steps:
       - uses: actions/checkout@v6
 
@@ -59,28 +60,31 @@ jobs:
           fi
 
       - name: Check Zig formatting
-        if: needs.changes.outputs.zig == 'true' || github.event_name == 'push'
+        if: (needs.changes.outputs.zig == 'true' || github.event_name == 'push') && hashFiles('build.zig') != ''
         uses: mlugg/setup-zig@v2
         with:
           version: 0.14.1
 
       - name: Run zig fmt --check
-        if: needs.changes.outputs.zig == 'true' || github.event_name == 'push'
+        if: (needs.changes.outputs.zig == 'true' || github.event_name == 'push') && hashFiles('build.zig') != ''
         run: |
-          # Check all .zig files for formatting issues
-          find src/ -name '*.zig' -print0 | xargs -0 zig fmt --check 2>&1 || {
-            echo "::error::Zig formatting check failed. Run 'zig fmt' locally."
-            exit 1
-          }
-    needs: [changes]
+          if [ -d src/ ]; then
+            find src/ -name '*.zig' -print0 | xargs -r -0 zig fmt --check 2>&1 || {
+              echo "::error::Zig formatting check failed. Run 'zig fmt' locally."
+              exit 1
+            }
+          else
+            echo "::notice::src/ directory not found, skipping zig fmt check"
+          fi
 
   # ── PR Gate: Zig Build + Test ────────────────────────────────────
   build-zig:
     runs-on: ubuntu-latest
     if: >-
-      needs.changes.outputs.zig == 'true' ||
+      hashFiles('build.zig') != '' &&
+      (needs.changes.outputs.zig == 'true' ||
       needs.changes.outputs.ci == 'true' ||
-      github.event_name == 'push'
+      github.event_name == 'push')
     needs: [changes]
     steps:
       - uses: actions/checkout@v6
@@ -131,9 +135,10 @@ jobs:
   build-ui:
     runs-on: ubuntu-latest
     if: >-
-      needs.changes.outputs.ui == 'true' ||
+      hashFiles('ui/package.json') != '' &&
+      (needs.changes.outputs.ui == 'true' ||
       needs.changes.outputs.ci == 'true' ||
-      github.event_name == 'push'
+      github.event_name == 'push')
     needs: [changes]
     steps:
       - uses: actions/checkout@v6
@@ -171,8 +176,10 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Install gitleaks
+        run: |
+          GITLEAKS_VERSION=$(curl -s https://api.github.com/repos/gitleaks/gitleaks/releases/latest | grep '"tag_name"' | sed 's/.*"v\(.*\)".*/\1/')
+          curl -sSfL "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz" | tar xz -C /usr/local/bin gitleaks
+
       - name: Scan for secrets (gitleaks)
-        uses: gitleaks/gitleaks-action@v2
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-          GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}
+        run: gitleaks detect --source . --verbose --redact

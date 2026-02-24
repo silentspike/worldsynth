@@ -34,8 +34,18 @@ If you discover a security vulnerability, please report it responsibly:
 
 ## Security Measures
 
-- Dependencies regularly updated via Dependabot
-- CodeQL SAST scanning on every push and pull request
-- Hidden Unicode/Bidi character detection in CI
+### Active
+
+- GitHub Secret Scanning with push protection enabled
+- Hidden Unicode/Bidi character detection in CI (CVE-2021-42574)
+- Secret scanning in CI via [gitleaks](https://github.com/gitleaks/gitleaks) (MIT-licensed CLI)
+- CodeQL SAST scanning on push/PR to `ui/**` paths and weekly schedule
+- Dependencies monitored via Dependabot (GitHub Actions ecosystem)
 - No secrets in source code (enforced via `.gitignore` and CI checks)
 - Hand-written bindings instead of `@cImport` for supply chain control
+
+### Planned (once code exists)
+
+- Dependabot for npm dependencies (ui/)
+- npm audit in CI pipeline
+- Additional CodeQL language coverage as codebase grows

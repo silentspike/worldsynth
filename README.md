@@ -1,12 +1,18 @@
 # WorldSynth
 
-[![CI](https://github.com/silentspike/worldsynth/actions/workflows/ci.yml/badge.svg)](https://github.com/silentspike/worldsynth/actions/workflows/ci.yml)
+[![Status: Pre-Alpha](https://img.shields.io/badge/Status-Pre--Alpha-red.svg)]()
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
 [![Platform: Linux](https://img.shields.io/badge/Platform-Linux-orange.svg)]()
 
+> **Project Status: Pre-Alpha / Planning Phase**
+>
+> This repository currently contains project infrastructure (CI/CD, issue templates, governance).
+> No production code has been written yet. The [143 open issues](https://github.com/silentspike/worldsynth/issues)
+> represent the planned work packages across 4 sprints. Implementation starts with Sprint 1.
+
 Professional multi-engine synthesizer with Zig DSP backend, Svelte 5 UI, and CLAP plugin support.
 
-## Features
+## Planned Features
 
 ### 11 Synthesis Engines
 | Engine | Description |
@@ -53,7 +59,7 @@ Professional multi-engine synthesizer with Zig DSP backend, Svelte 5 UI, and CLA
 - Linux with JACK or PipeWire
 - NVIDIA GPU with CUDA 12.x (optional, for neural engine)
 
-## Build
+## Build (once code is available)
 
 ```bash
 # DSP backend
@@ -72,6 +78,9 @@ cd ui
 npm run build
 npm run check
 ```
+
+> **Note:** These commands will work once Sprint 1 implementation begins.
+> See the [milestone tracker](https://github.com/silentspike/worldsynth/milestones) for progress.
 
 ## Architecture
 
