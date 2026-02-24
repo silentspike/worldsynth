@@ -86,4 +86,4 @@ Code running in the audio thread must:
 
 ## License
 
-By contributing, you agree that your contributions will be licensed under the [GNU General Public License v3.0](LICENSE).
+By contributing, you agree that your contributions will be licensed under the project's proprietary license. See [LICENSE](LICENSE) for details.
