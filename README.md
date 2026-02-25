@@ -7,8 +7,8 @@
 > **Project Status: Pre-Alpha / Planning Phase**
 >
 > This repository currently contains project infrastructure (CI/CD, issue templates, governance).
-> No production code has been written yet. The [143 open issues](https://github.com/silentspike/worldsynth/issues)
-> represent the planned work packages across 4 sprints. Implementation starts with Sprint 1.
+> No production code has been written yet. The 143 work package issues
+> represent the planned development across 4 sprints. Implementation starts with Sprint 1.
 
 Professional multi-engine synthesizer with Zig DSP backend, Svelte 5 UI, and CLAP plugin support.
 
@@ -80,7 +80,7 @@ npm run check
 ```
 
 > **Note:** These commands will work once Sprint 1 implementation begins.
-> See the [milestone tracker](https://github.com/silentspike/worldsynth/milestones) for progress.
+> See the project milestones for sprint progress.
 
 ## Architecture
 
