@@ -3,6 +3,9 @@
 [![Status: Pre-Alpha](https://img.shields.io/badge/Status-Pre--Alpha-red.svg)]()
 [![License: Proprietary](https://img.shields.io/badge/License-Proprietary-red.svg)](LICENSE)
 [![Platform: Linux](https://img.shields.io/badge/Platform-Linux-orange.svg)]()
+[![Plugin: CLAP](https://img.shields.io/badge/Plugin-CLAP%201.2-blue.svg)](https://cleveraudio.org/)
+[![DSP: Zig](https://img.shields.io/badge/DSP-Zig%200.14-orange.svg)](https://ziglang.org/)
+[![UI: Svelte 5](https://img.shields.io/badge/UI-Svelte%205-ff3e00.svg)](https://svelte.dev/)
 
 Professional multi-engine synthesizer with 11 synthesis engines, Zig DSP backend, Svelte 5 UI, and CLAP plugin support.
 

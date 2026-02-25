@@ -3,12 +3,16 @@ name: Auto Label
 on:
   issues:
     types: [opened]
+  pull_request_target:
+    types: [opened]
 
 permissions:
   issues: write
+  pull-requests: write
 
 jobs:
   label-issues:
+    if: github.event_name == 'issues'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/github-script@v7
@@ -19,15 +23,49 @@ jobs:
             const repo = context.repo.repo;
             const issue_number = context.payload.issue.number;
 
-            const labels = [];
+            const labels = ["status:backlog"];
 
             if (/bug|fix|broken|crash|error/.test(title))
               labels.push("type:bug");
             else if (/feat|add|new|request|support|suggest/.test(title))
               labels.push("type:feature");
+            else if (/doc|readme|guide|tutorial/.test(title))
+              labels.push("type:docs");
+            else if (/security|vuln|cve/.test(title))
+              labels.push("type:security");
 
-            if (labels.length > 0) {
+            await github.rest.issues.addLabels({
+              owner, repo, issue_number, labels
+            });
+
+  label-prs:
+    if: github.event_name == 'pull_request_target'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/github-script@v7
+        with:
+          script: |
+            const title = context.payload.pull_request.title;
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const issue_number = context.payload.pull_request.number;
+
+            const match = title.match(/^([a-z]+)(\([^)]*\))?[!]?:/);
+            if (!match) return;
+
+            const prefix = match[1];
+            const labelMap = {
+              feat: "type:feature",
+              fix: "type:bug",
+              docs: "type:docs",
+              chore: "type:chore",
+              security: "type:security",
+            };
+
+            const label = labelMap[prefix];
+            if (label) {
               await github.rest.issues.addLabels({
-                owner, repo, issue_number, labels
+                owner, repo, issue_number,
+                labels: [label]
               });
             }
