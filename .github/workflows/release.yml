@@ -8,22 +8,98 @@ on:
 permissions:
   contents: write
 
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
-  release:
-    runs-on: ubuntu-latest
+  # ── Build Release Artifacts ──────────────────────────────────────
+  build:
+    runs-on: [self-hosted, worldsynth]
+    outputs:
+      tag: ${{ steps.meta.outputs.tag }}
+      version: ${{ steps.meta.outputs.version }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          submodules: recursive
+          fetch-depth: 0
+
+      - name: Extract release metadata
+        id: meta
+        run: |
+          TAG="${GITHUB_REF#refs/tags/}"
+          VERSION="${TAG#v}"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Building release: $TAG (version $VERSION)"
+
+      - uses: mlugg/setup-zig@v2
+        with:
+          version: 0.14.1
+
+      - name: Build release
+        run: zig build -Doptimize=ReleaseFast
+
+      - name: Run tests
+        run: zig build test
+
+      - name: Package artifacts
+        run: |
+          TAG="${{ steps.meta.outputs.tag }}"
+          DIST="worldsynth-${TAG}-linux-x86_64"
+          mkdir -p "dist/${DIST}"
+
+          # CLAP plugin
+          if [ -f zig-out/lib/worldsynth.clap ]; then
+            cp zig-out/lib/worldsynth.clap "dist/${DIST}/"
+            echo "Packaged: worldsynth.clap ($(stat -c%s zig-out/lib/worldsynth.clap) bytes)"
+          fi
+
+          # Standalone binary
+          if [ -f zig-out/bin/worldsynth ]; then
+            cp zig-out/bin/worldsynth "dist/${DIST}/"
+            echo "Packaged: worldsynth ($(stat -c%s zig-out/bin/worldsynth) bytes)"
+          fi
+
+          # Include LICENSE
+          cp LICENSE "dist/${DIST}/"
+
+          # Create tarball
+          cd dist
+          tar czf "${DIST}.tar.gz" "${DIST}/"
+          sha256sum "${DIST}.tar.gz" > "${DIST}.tar.gz.sha256"
+
+          echo "Artifact: ${DIST}.tar.gz ($(stat -c%s "${DIST}.tar.gz") bytes)"
+          cat "${DIST}.tar.gz.sha256"
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-linux-x86_64
+          path: dist/*.tar.gz*
+          retention-days: 7
+
+  # ── Private Release (internal, with changelog) ──────────────────
+  release-private:
+    needs: build
+    runs-on: [self-hosted, worldsynth]
     steps:
       - uses: actions/checkout@v6
         with:
           fetch-depth: 0
 
-      - name: Extract changelog section
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: release-linux-x86_64
+          path: dist/
+
+      - name: Extract changelog
         id: changelog
         run: |
-          TAG="${GITHUB_REF#refs/tags/}"
-          VERSION="${TAG#v}"
+          VERSION="${{ needs.build.outputs.version }}"
 
-          # Extract the section for this version from CHANGELOG.md
-          # Matches from ## [version] or ## version until the next ## heading
           NOTES=$(awk -v ver="$VERSION" '
             /^## / {
               if (found) exit
@@ -33,18 +109,69 @@ jobs:
           ' CHANGELOG.md 2>/dev/null || true)
 
           if [ -z "$NOTES" ]; then
-            NOTES="Release ${TAG}"
+            NOTES="Release ${{ needs.build.outputs.tag }}"
           fi
 
-          # Write to file to preserve multiline content
-          echo "$NOTES" > /tmp/release-notes.md
+          echo "$NOTES" > /tmp/release-notes-private.md
 
-      - name: Create GitHub Release
+      - name: Create private release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          TAG="${GITHUB_REF#refs/tags/}"
-          gh release create "$TAG" \
+          TAG="${{ needs.build.outputs.tag }}"
+          gh release create "$TAG" dist/* \
             --title "$TAG" \
-            --notes-file /tmp/release-notes.md \
+            --notes-file /tmp/release-notes-private.md \
             --verify-tag
+
+  # ── Public Release (distribution hub, user-facing) ──────────────
+  release-public:
+    needs: build
+    runs-on: [self-hosted, worldsynth]
+    steps:
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: release-linux-x86_64
+          path: dist/
+
+      - name: Create public release
+        env:
+          GH_TOKEN: ${{ secrets.PUBLIC_REPO_TOKEN }}
+        run: |
+          TAG="${{ needs.build.outputs.tag }}"
+          VERSION="${{ needs.build.outputs.version }}"
+
+          # Create user-facing release notes
+          cat > /tmp/release-notes-public.md << NOTES
+          ## WorldSynth ${TAG}
+
+          ### Downloads
+
+          | Platform | File |
+          |----------|------|
+          | Linux x86_64 | \`worldsynth-${TAG}-linux-x86_64.tar.gz\` |
+
+          ### Installation
+
+          1. Download the archive for your platform
+          2. Extract: \`tar xzf worldsynth-${TAG}-linux-x86_64.tar.gz\`
+          3. **CLAP Plugin**: Copy \`worldsynth.clap\` to \`~/.clap/\`
+          4. **Standalone**: Run \`./worldsynth\`
+
+          ### Verify Download
+
+          \`\`\`bash
+          sha256sum -c worldsynth-${TAG}-linux-x86_64.tar.gz.sha256
+          \`\`\`
+
+          ---
+          Full changelog available in the [private repository](https://github.com/obtFusi/worldsynth).
+          NOTES
+
+          # Create release on public repo
+          gh release create "$TAG" dist/* \
+            --repo silentspike/worldsynth \
+            --title "WorldSynth ${TAG}" \
+            --notes-file /tmp/release-notes-public.md \
+            --latest
