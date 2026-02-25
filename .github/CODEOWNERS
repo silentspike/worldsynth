@@ -1,0 +1,6 @@
+# Default owner for everything
+* @silentspike/maintainers
+
+# Documentation
+*.md @silentspike/maintainers
+docs/ @silentspike/maintainers
