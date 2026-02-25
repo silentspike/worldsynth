@@ -1,9 +1,9 @@
 # Default owner for everything
-* @obtFusi
+* @silentspike/maintainers
 
 # CI/CD
-.github/ @obtFusi
+.github/ @silentspike/maintainers
 
 # Documentation
-*.md @obtFusi
-docs/ @obtFusi
+*.md @silentspike/maintainers
+docs/ @silentspike/maintainers
