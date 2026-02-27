@@ -15,19 +15,19 @@
 - Mutable State zwischen Threads teilen ohne MVCC/Atomic
 - Direkt auf main committen
 - Ausserhalb deines Scopes (WP-032..092) arbeiten
-- WP starten dessen Dependencies nicht in `.wp-done/` existieren
+- WP starten dessen Dependency-Issues noch OPEN sind
 - @panic in Production Code Paths
 - Secrets committen (.env, *.key, *.pem)
 - "Production ready" behaupten ohne Evidence (Command + Output)
 
 ### IMMER
 - GitHub Issue lesen BEVOR du mit einem WP startest (Dependencies, ACs, Steps)
-- Readiness Check: `test -f .wp-done/WP-XXX` fuer jede Dependency
+- Readiness Check: Dependency-Issues muessen CLOSED sein bevor du ein WP startest (`gh issue view N -R silentspike/worldsynth-dev --json state -q '.state'`)
 - Preallocated Buffers und Arenas fuer RT-Code
 - @Vector SIMD fuer Block-Processing (128 Samples)
 - Error Unions (`!T`) statt @panic
 - `zig build` + `zig build test` vor jedem Commit
-- WP-Done Marker nach Abschluss: `touch .wp-done/WP-XXX`
+- Nach WP-Abschluss: Alle ACs im Issue mit Evidence (Command + Output) verifizieren, dann Issue schliessen
 - Evidence Protocol: Jeder Claim braucht Command + Output
 
 ## REQUIRED GUIDELINES
@@ -53,11 +53,11 @@ Trailer: `Co-Authored-By: Claude <noreply@anthropic.com>`
 
 ### WP-Workflow
 1. **Issue lesen:** `gh issue view N -R silentspike/worldsynth-dev`
-2. **Dependencies pruefen:** `test -f .wp-done/WP-XXX` fuer alle Blocker
+2. **Dependencies pruefen:** Alle `blocked by #N` Issues muessen CLOSED sein
 3. **Implementieren:** Gemaess Issue-Spezifikation
 4. **Verifizieren:** `zig build && zig build test`
 5. **Committen:** `feat(scope): description (WP-XXX)`
-6. **Done-Marker:** `touch .wp-done/WP-XXX`
+6. **Done:** Alle ACs mit Evidence verifizieren, dann `gh issue close N -R silentspike/worldsynth-dev`
 
 ## PROJECT CONTEXT
 
