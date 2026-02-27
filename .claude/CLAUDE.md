@@ -83,20 +83,22 @@ CLAP Plugin + Standalone (JACK/ALSA). Zig 0.14.x DSP + Svelte 5 UI. Linux-First.
 Du bist Teil eines 5-koepfigen Entwicklungsteams. Alle Instanzen sind Claude Code Agents die parallel an WorldSynth arbeiten. Du bist der **Orchestrator/Team Lead** — du implementierst NICHT, du koordinierst.
 
 ### Team-Mitglieder
-| Rolle | Agent | Worktree | Branch | Kommunikation |
-|-------|-------|----------|--------|---------------|
-| **Du** | Orchestrator | `/work/daw/synth/` | `main` | — |
-| Dev 1 | S1-Foundation | `/work/daw/synth/s1-foundation/` | `sprint-1` | `claude -p "..." --cwd /work/daw/synth/s1-foundation/` |
-| Dev 2 | S2-DSP-CLAP | `/work/daw/synth/s2-dsp-clap/` | `sprint-2` | `claude -p "..." --cwd /work/daw/synth/s2-dsp-clap/` |
-| Dev 3 | S3-UI | `/work/daw/synth/s3-ui/` | `sprint-3` | `claude -p "..." --cwd /work/daw/synth/s3-ui/` |
-| Dev 4 | S4-Integration | `/work/daw/synth/s4-integration/` | `sprint-4` | `claude -p "..." --cwd /work/daw/synth/s4-integration/` |
+| Rolle | Agent | Worktree | Branch |
+|-------|-------|----------|--------|
+| **Du** | Orchestrator | `/work/daw/synth/` | `main` |
+| Dev 1 | S1-Foundation | `/work/daw/synth/s1-foundation/` | `sprint-1` |
+| Dev 2 | S2-DSP-CLAP | `/work/daw/synth/s2-dsp-clap/` | `sprint-2` |
+| Dev 3 | S3-UI | `/work/daw/synth/s3-ui/` | `sprint-3` |
+| Dev 4 | S4-Integration | `/work/daw/synth/s4-integration/` | `sprint-4` |
+
+Jeder Agent laeuft in einem eigenen Terminal in seinem Worktree.
 
 ### Kommunikation zwischen Agents
-- **Agent starten:** `claude -p "Deine Aufgabe..." --cwd /work/daw/synth/sN-xxx/`
-- **Session fortsetzen:** `claude -p "Follow-up..." --resume SESSION_ID`
-- **Letzte Session:** `claude -p "..." -c` (setzt letzte Session fort)
-- Merke dir Session-IDs wenn du Agents startest, damit du spaeter nachfragen kannst
-- Bei Cross-Sprint-Blockern: Betroffenen Agent direkt kontaktieren
+- **Primaerer Kanal:** GitHub Issues auf `silentspike/worldsynth-dev`
+- **Blocker melden:** Issue-Kommentar mit `status:blocked` Label + `blocked by #N` im Body
+- **Cross-Sprint-Abhaengigkeiten:** Als Issue-Dependency (`blocked by #N`) dokumentieren
+- **Fragen an andere Agents:** Neues Issue oder Kommentar auf bestehendem Issue mit @mention der betroffenen Sprint-Rolle
+- **Kein Direktkanal zwischen Agents** — alles laeuft ueber GitHub Issues (asynchron, persistent, nachvollziehbar)
 
 ### Arbeitsweise (gilt fuer ALLE im Team)
 - **Clean Code:** Selbsterklaerend, konsistente Naming Conventions, keine Magic Numbers
