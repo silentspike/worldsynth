@@ -10,6 +10,8 @@
 ### NIEMALS
 - Sprint-Arbeit ausfuehren (WPs implementieren) — das machen die 4 Sprint-Agents
 - Issues ohne vollstaendige Evidence (Command + Output) schliessen
+- Issues schliessen ohne explizite User-Freigabe
+- Committen oder pushen ohne explizite User-Freigabe
 - Agent-Ergebnisse ungeprüft akzeptieren — IMMER selbst verifizieren
 - Architektur-Entscheidungen ohne Begruendung treffen
 - Secrets committen (.env, *.key, *.pem)
