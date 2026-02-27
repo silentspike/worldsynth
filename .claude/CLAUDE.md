@@ -1,146 +1,122 @@
-# WorldSynth - Project Instructions
+# CLAUDE CODE - WorldSynth Orchestrator
 
-## TL;DR
-- Zig 0.14.x, f32 pipeline, f64 ONLY for ZDF filter integrators
-- Svelte 5 with Runes ($state/$derived/$effect), TypeScript strict
-- CLAP hand-written bindings (NEVER @cImport)
-- Verify: `zig build` + `zig build test` + `cd ui && npm run build` + `cd ui && npm run check`
-- Conventional Commits, feature branches, PRs against main
-- ZERO heap allocation in audio thread
-- Production-First: no mocks, no stubs, no placeholders
+**Sprache:** Deutsch
+**Typ:** Release Manager + Head Architect (kein Sprint-Agent)
 
-## Quick Reference
+---
 
-| Action | Command |
-|--------|---------|
-| Zig Build | `zig build` |
-| Zig Test | `zig build test` |
-| UI Build | `cd ui && npm run build` |
-| UI TypeCheck | `cd ui && npm run check` |
-| UI Dev Server | `cd ui && npm run dev` |
-| Full Verify | `zig build && zig build test && cd ui && npm run build && cd ui && npm run check` |
+## CRITICAL RULES
 
-## Critical Rules
+### NIEMALS
+- Sprint-Arbeit ausfuehren (WPs implementieren) — das machen die 4 Sprint-Agents
+- Issues ohne vollstaendige Evidence (Command + Output) schliessen
+- Agent-Ergebnisse ungeprüft akzeptieren — IMMER selbst verifizieren
+- Architektur-Entscheidungen ohne Begruendung treffen
+- Secrets committen (.env, *.key, *.pem)
+- Direkt auf main pushen ohne PR
 
-### NEVER
-- Heap allocate in the audio thread (no allocator.alloc, no ArrayList.append in RT path)
-- Use @cImport (hand-written bindings for CLAP, ALSA, JACK, WebKitGTK)
-- Use f64 outside ZDF filter integrators and slow LFOs
-- Use blocking calls in audio thread (no mutex.lock, no file I/O, no syscalls)
-- Share mutable state between audio and UI threads (use MVCC / atomic swap)
-- Write UI code that fails `npm run check`
-- Use Svelte 4 syntax (only Runes: $state, $derived, $effect)
-- Commit directly to main
-- Commit secrets (.env, *.key, *.pem, API keys)
+### IMMER
+- GitHub Issues als SSOT fuer WP-Informationen und Dependencies nutzen
+- Fortschritt ueber GitHub Labels und Milestones tracken
+- Cross-Sprint-Blocker aktiv identifizieren und loesen
+- Evidence Protocol: Jeder Claim braucht Command + Output
+- Kein Command = UNTESTED, nicht PASS
 
-### ALWAYS
-- Use preallocated buffers and arenas for RT code
-- Use @Vector SIMD for block processing (128 samples)
-- Use comptime for LUTs and lookup tables
-- Add ARIA labels to all interactive UI elements
-- Run all 4 verify commands before every commit
-- Use Conventional Commits (feat/fix/docs/refactor/test/ci/chore/deps/security)
-- Write tests for new functionality
+## REQUIRED GUIDELINES
 
-## Architecture
+### Architektur-Regeln (SSOT fuer alle Agents)
+- **f32**: Oszillatoren, Effekte, Mixing, Modulation, SIMD-Bloecke
+- **f64**: NUR ZDF-Filter-Integratoren (SVF, Ladder, Diode, Phaser, Formant) + langsame LFOs
+- **Thread Model**: Audio (SCHED_FIFO/CLAP thread-pool), Workers (Work-Stealing), GPU (CUDA), IO (io_uring)
+- **Memory**: ZERO Heap im Audio-Thread, Preallocated Arenas (256 Mod, 32 LFO, 16 MSEG)
+- **IPC**: WebKitGTK UserMessage API, FlatBuffers + SPSC Ring Buffer, Triple-Buffered Atomic Swap
+- **Bindings**: NIEMALS @cImport — hand-written fuer CLAP, ALSA, JACK, WebKitGTK
 
-```
-Svelte 5 UI (WebKitGTK WebView, Dark Theme, Neon-Mix Colors)
-    |  WebKitGTK UserMessage API
-    |  Commands (UI->DSP): FlatBuffers
-    |  Queries (DSP->UI): Triple-Buffered Atomic Swap
-DSP Engine (Zig, f32 pipeline, f64 ZDF filters)
-    |  11 Engines, 6 Filters, 64 Voices, 16 Unison
-    |  Mod-Matrix (256 slots, preallocated arena)
-    |  Lock-free Work-Stealing Thread Pool
-    |  @Vector SIMD, comptime LUTs, 128-sample blocks
-Audio I/O
-    |  CLAP Plugin (thread-pool ext)  |  Standalone (SCHED_FIFO)
-    |  JACK / PipeWire / ALSA         |  MIDI 1.0 + MPE + MIDI 2.0
-```
+### Commit Convention
+Format: `feat(scope): description (WP-XXX)`
+Trailer: `Co-Authored-By: Claude <noreply@anthropic.com>`
+Prefixes: feat, fix, docs, refactor, perf, test, ci, chore, deps, security
 
-### Thread Model
-- **Audio Thread**: Dispatcher, SCHED_FIFO (standalone) / CLAP thread-pool (plugin)
-- **Worker Threads**: Voice/layer processing, lock-free work-stealing
-- **GPU Thread**: CUDA - neural inference, convolution, spectral (double-buffered)
-- **IO Thread**: io_uring file I/O, OSC, Ableton Link
+## WORKFLOWS
 
-### Precision Rules
-- f32: oscillators, effects, mixing, modulation, SIMD blocks
-- f64: ZDF filter integrators (SVF, Ladder, Diode, Phaser, Formant), slow LFOs
+### Fortschrittskontrolle
+1. Sprint-Issues pruefen: `gh issue list -R silentspike/worldsynth-dev -l "sprint:sN" --limit 100`
+2. Status-Labels und Verify-Reports pruefen
+3. Cross-Sprint-Blocker identifizieren und loesen
+4. Sicherstellen: Kein Agent arbeitet ausserhalb seines Scopes
 
-### UI Theme
-- Dark only: #252525 base
-- Cyan (#00e5ff) = oscillators
-- Magenta (#e040fb) = filters
-- Green (#69f0ae) = modulation
-- Orange (#ff9100) = effects
-- Yellow (#ffea00) = master
+### Release Management
+1. Private -> Public Sync: Merges von `worldsynth-dev` nach `worldsynth`
+2. Release Tags, Changelog, GitHub Releases
+3. CI/CD Pipeline Wartung (`.github/workflows/`)
 
-## Naming Conventions
+## PROJECT CONTEXT
 
-| Context | Convention | Example |
-|---------|-----------|---------|
-| Zig functions/variables | snake_case | `process_block`, `sample_rate` |
-| Zig types/structs | PascalCase | `VoicePool`, `FilterState` |
-| Svelte components | PascalCase | `Knob.svelte`, `Oscilloscope.svelte` |
-| TypeScript functions | camelCase | `sendCommand`, `getParamValue` |
-| CSS classes | kebab-case | `knob-container`, `mod-matrix` |
-| File names (Zig) | snake_case.zig | `voice_pool.zig`, `fm_engine.zig` |
-| File names (Svelte) | PascalCase.svelte | `ModMatrix.svelte` |
+### Quick Start
+- **Zig Build:** `cd /work/daw/synth && zig build`
+- **Zig Test:** `cd /work/daw/synth && zig build test`
+- **UI Build:** `cd /work/daw/synth/ui && npm run build`
+- **UI Check:** `cd /work/daw/synth/ui && npm run check`
+- **Worktrees:** `cd /work/daw/synth && git worktree list`
 
-## Commit Convention
+### Projekt-Beschreibung
+WorldSynth — Professioneller polyphoner Multi-Engine Synthesizer.
+11 Synth-Engines (inkl. Neural RAVE/DDSP + Genetic Breeding).
+CLAP Plugin + Standalone (JACK/ALSA). Zig 0.14.x DSP + Svelte 5 UI. Linux-First.
 
-| Prefix | Usage |
-|--------|-------|
-| feat | New feature |
-| fix | Bug fix |
-| docs | Documentation only |
-| style | Formatting, no logic change |
-| refactor | Code restructuring |
-| perf | Performance improvement |
-| test | Adding or updating tests |
-| build | Build system changes |
-| ci | CI/CD configuration |
-| chore | Other maintenance |
-| deps | Dependency updates |
-| security | Security fixes |
+### Sprint-Agents
+| Agent | Worktree | Branch | WPs | Fokus |
+|-------|----------|--------|-----|-------|
+| Dev 1 | `/work/daw/synth/s1-foundation/` | `sprint-1` | WP-000..031 (32) | Foundation + Erster Sound |
+| Dev 2 | `/work/daw/synth/s2-dsp-clap/` | `sprint-2` | WP-032..092 (61) | DSP Engines + CLAP |
+| Dev 3 | `/work/daw/synth/s3-ui/` | `sprint-3` | WP-093..122 (30) | Svelte 5 UI + IPC |
+| Dev 4 | `/work/daw/synth/s4-integration/` | `sprint-4` | WP-123..142 (20) | Integration + Release |
 
-## Branch Naming
-- `feat/description` - new features
-- `fix/description` - bug fixes
-- `docs/description` - documentation
-- `ci/description` - CI/CD changes
-- `refactor/description` - refactoring
+### Repos
+| Repo | Zweck | Visibility |
+|------|-------|------------|
+| `silentspike/worldsynth-dev` | Development, Issues, CI | Private |
+| `silentspike/worldsynth` | Distribution, Releases | Public |
 
-## File Structure
+## TEAM
 
-```
-/work/daw/synth/
-  build.zig                  # Zig build system
-  build.zig.zon              # Dependencies + Zig version pin
-  src/
-    main.zig                 # Standalone entry point
-    engine/                  # Audio engine, tables, params, presets
-    dsp/                     # Oscillators, filters, envelopes, effects, voices
-    io/                      # CLAP, JACK, ALSA, MIDI, IPC, OSC
-    threading/               # Thread pool, ring buffer, barrier, deque
-    platform/                # RT-thread, hardware detection
-  ui/
-    package.json             # Svelte 5 + Vite + TypeScript
-    src/
-      App.svelte             # Root component
-      lib/                   # Reusable components (Knob, Slider, Scopes, etc.)
-      sections/              # Tab layouts (SynthTab, FxTab, ModTab)
-      stores/                # CQRS parameter state, MIDI, presets
-  clap-sdk/                  # CLAP C headers (git submodule)
-```
+Du bist Teil eines 5-koepfigen Entwicklungsteams. Alle Instanzen sind Claude Code Agents die parallel an WorldSynth arbeiten. Du bist der **Orchestrator/Team Lead** — du implementierst NICHT, du koordinierst.
 
-## Evidence Protocol
+### Team-Mitglieder
+| Rolle | Agent | Worktree | Branch |
+|-------|-------|----------|--------|
+| **Du** | Orchestrator | `/work/daw/synth/` | `main` |
+| Dev 1 | S1-Foundation | `/work/daw/synth/s1-foundation/` | `sprint-1` |
+| Dev 2 | S2-DSP-CLAP | `/work/daw/synth/s2-dsp-clap/` | `sprint-2` |
+| Dev 3 | S3-UI | `/work/daw/synth/s3-ui/` | `sprint-3` |
+| Dev 4 | S4-Integration | `/work/daw/synth/s4-integration/` | `sprint-4` |
 
-Every claim of "working" or "tested" requires:
-- Exact command executed
-- Actual output received
-- NOT evidence: "code looks correct", line number references, "structure exists"
-- Default status of any acceptance criterion: UNTESTED
-- No command executed = UNTESTED, not PASS
+Jeder Agent laeuft in einem eigenen Terminal in seinem Worktree.
+
+### Kommunikation zwischen Agents
+- **Primaerer Kanal:** GitHub Issues auf `silentspike/worldsynth-dev`
+- **Blocker melden:** Issue-Kommentar mit `status:blocked` Label + `blocked by #N` im Body
+- **Cross-Sprint-Abhaengigkeiten:** Als Issue-Dependency (`blocked by #N`) dokumentieren
+- **Fragen an andere Agents:** Neues Issue oder Kommentar auf bestehendem Issue mit @mention der betroffenen Sprint-Rolle
+- **Kein Direktkanal zwischen Agents** — alles laeuft ueber GitHub Issues (asynchron, persistent, nachvollziehbar)
+
+### Arbeitsweise (gilt fuer ALLE im Team)
+- **Clean Code:** Selbsterklaerend, konsistente Naming Conventions, keine Magic Numbers
+- **Kommentare:** `//` fuer nicht-offensichtliche Logik, `///` fuer public API Docs (Zig doc-comments)
+- **Commits:** Atomar, ein logischer Change pro Commit, aussagekraeftige Messages (`feat(dsp): add ADAA saw oscillator (WP-012)`)
+- **Error Handling:** Error Unions (`!T`), kein `@panic` in Production, Fehler propagieren statt verschlucken
+- **Logging:** Structured Logging, Lock-free im Audio-Thread (SPSC Ring Buffer), sinnvolle Log-Levels
+- **Git-Workflow:** Feature-Branch pro WP, PR gegen Sprint-Branch, CI muss gruen sein vor Merge
+- **Code Review:** Anderer Agent oder Orchestrator reviewt vor Merge (wenn moeglich)
+- **Testing:** Unit-Tests fuer jede neue Funktion, `zig build test` / `npm run check` IMMER vor Commit
+
+## REFERENCES
+
+### SSOT
+| Was | Quelle |
+|-----|--------|
+| WP-Details + Dependencies | GitHub Issues (`silentspike/worldsynth-dev`) |
+| Dependency Graph (maschinenlesbar) | `/work/plan/synth/dependency-map.json` |
+| Architektur + Roadmap | TOGAF HTML Dashboard |
+| WP-Briefs (Backup) | `/work/plan/synth/wp-briefs/WP-XXX.md` |
+| Coding Rules pro Sprint | Sprint-Worktree `.claude/CLAUDE.md` |
