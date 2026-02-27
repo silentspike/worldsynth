@@ -13,16 +13,18 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  # ── Build Release Artifacts ──────────────────────────────────────
-  build:
+  # ── Release Metadata + Pre-flight Checks ─────────────────────────
+  preflight:
     runs-on: [self-hosted, worldsynth]
     outputs:
       tag: ${{ steps.meta.outputs.tag }}
       version: ${{ steps.meta.outputs.version }}
+      is_rc: ${{ steps.meta.outputs.is_rc }}
+      is_prerelease: ${{ steps.meta.outputs.is_prerelease }}
+      changelog_ok: ${{ steps.checks.outputs.changelog_ok }}
     steps:
       - uses: actions/checkout@v6
         with:
-          submodules: recursive
           fetch-depth: 0
 
       - name: Extract release metadata
@@ -32,7 +34,79 @@ jobs:
           VERSION="${TAG#v}"
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-          echo "Building release: $TAG (version $VERSION)"
+
+          # Detect RC / pre-release tags
+          if [[ "$TAG" == *"-rc"* ]]; then
+            echo "is_rc=true" >> "$GITHUB_OUTPUT"
+            echo "is_prerelease=true" >> "$GITHUB_OUTPUT"
+            echo "::notice::Release Candidate detected: $TAG"
+          elif [[ "$TAG" == *"-alpha"* ]] || [[ "$TAG" == *"-beta"* ]]; then
+            echo "is_rc=false" >> "$GITHUB_OUTPUT"
+            echo "is_prerelease=true" >> "$GITHUB_OUTPUT"
+            echo "::notice::Pre-release detected: $TAG"
+          else
+            echo "is_rc=false" >> "$GITHUB_OUTPUT"
+            echo "is_prerelease=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::Stable release detected: $TAG"
+          fi
+
+      - name: Pre-flight checks
+        id: checks
+        run: |
+          TAG="${GITHUB_REF#refs/tags/}"
+          VERSION="${TAG#v}"
+          ERRORS=0
+
+          # Check 1: CHANGELOG.md has entry for this version (strip RC suffix for changelog)
+          BASE_VERSION=$(echo "$VERSION" | sed 's/-rc\.[0-9]*$//' | sed 's/-alpha\.[0-9]*$//' | sed 's/-beta\.[0-9]*$//')
+          if grep -q "## \[${BASE_VERSION}\]" CHANGELOG.md 2>/dev/null; then
+            echo "::notice::CHANGELOG: Entry found for ${BASE_VERSION}"
+            echo "changelog_ok=true" >> "$GITHUB_OUTPUT"
+          elif grep -q "## \[Unreleased\]" CHANGELOG.md 2>/dev/null; then
+            echo "::warning::CHANGELOG: No entry for ${BASE_VERSION}, using [Unreleased] section"
+            echo "changelog_ok=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::error::CHANGELOG: No entry for ${BASE_VERSION} and no [Unreleased] section"
+            echo "changelog_ok=false" >> "$GITHUB_OUTPUT"
+            ERRORS=$((ERRORS + 1))
+          fi
+
+          # Check 2: LICENSE file exists
+          if [ ! -f LICENSE ]; then
+            echo "::error::LICENSE file missing"
+            ERRORS=$((ERRORS + 1))
+          fi
+
+          # Check 3: build.zig exists (Zig project)
+          if [ ! -f build.zig ]; then
+            echo "::error::build.zig missing — not a valid Zig project"
+            ERRORS=$((ERRORS + 1))
+          fi
+
+          # Check 4: Tag matches build.zig.zon version (if parseable)
+          if [ -f build.zig.zon ]; then
+            ZON_VERSION=$(grep -oP '\.version\s*=\s*"\K[^"]+' build.zig.zon 2>/dev/null || true)
+            if [ -n "$ZON_VERSION" ] && [ "$ZON_VERSION" != "$BASE_VERSION" ]; then
+              echo "::warning::Version mismatch: tag=${BASE_VERSION} vs build.zig.zon=${ZON_VERSION}"
+            fi
+          fi
+
+          if [ "$ERRORS" -gt 0 ]; then
+            echo "::error::Pre-flight failed with $ERRORS error(s)"
+            exit 1
+          fi
+
+          echo "::notice::All pre-flight checks passed"
+
+  # ── Build Release Artifacts ──────────────────────────────────────
+  build:
+    needs: preflight
+    runs-on: [self-hosted, worldsynth]
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          submodules: recursive
+          fetch-depth: 0
 
       - uses: mlugg/setup-zig@v2
         with:
@@ -46,7 +120,7 @@ jobs:
 
       - name: Package artifacts
         run: |
-          TAG="${{ steps.meta.outputs.tag }}"
+          TAG="${{ needs.preflight.outputs.tag }}"
           DIST="worldsynth-${TAG}-linux-x86_64"
           mkdir -p "dist/${DIST}"
 
@@ -78,11 +152,11 @@ jobs:
         with:
           name: release-linux-x86_64
           path: dist/*.tar.gz*
-          retention-days: 7
+          retention-days: 30
 
   # ── Private Release (internal, with changelog) ──────────────────
   release-private:
-    needs: build
+    needs: [preflight, build]
     runs-on: [self-hosted, worldsynth]
     steps:
       - uses: actions/checkout@v6
@@ -98,18 +172,32 @@ jobs:
       - name: Extract changelog
         id: changelog
         run: |
-          VERSION="${{ needs.build.outputs.version }}"
+          VERSION="${{ needs.preflight.outputs.version }}"
+          BASE_VERSION=$(echo "$VERSION" | sed 's/-rc\.[0-9]*$//' | sed 's/-alpha\.[0-9]*$//' | sed 's/-beta\.[0-9]*$//')
 
-          NOTES=$(awk -v ver="$VERSION" '
-            /^## / {
-              if (found) exit
-              if (index($0, ver)) { found=1; next }
-            }
-            found { print }
-          ' CHANGELOG.md 2>/dev/null || true)
+          # Try exact version first, then base version, then Unreleased
+          NOTES=""
+          for VER in "$VERSION" "$BASE_VERSION"; do
+            NOTES=$(awk -v ver="$VER" '
+              /^## / {
+                if (found) exit
+                if (index($0, ver)) { found=1; next }
+              }
+              found { print }
+            ' CHANGELOG.md 2>/dev/null || true)
+            if [ -n "$NOTES" ]; then break; fi
+          done
 
           if [ -z "$NOTES" ]; then
-            NOTES="Release ${{ needs.build.outputs.tag }}"
+            NOTES=$(awk '
+              /^## \[Unreleased\]/ { found=1; next }
+              /^## \[/ { if (found) exit }
+              found { print }
+            ' CHANGELOG.md 2>/dev/null || true)
+          fi
+
+          if [ -z "$NOTES" ]; then
+            NOTES="Release ${{ needs.preflight.outputs.tag }}"
           fi
 
           echo "$NOTES" > /tmp/release-notes-private.md
@@ -118,34 +206,80 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          TAG="${{ needs.build.outputs.tag }}"
+          TAG="${{ needs.preflight.outputs.tag }}"
+          IS_PRERELEASE="${{ needs.preflight.outputs.is_prerelease }}"
+
+          PRERELEASE_FLAG=""
+          if [ "$IS_PRERELEASE" = "true" ]; then
+            PRERELEASE_FLAG="--prerelease"
+          fi
+
           gh release create "$TAG" dist/* \
             --title "$TAG" \
             --notes-file /tmp/release-notes-private.md \
-            --verify-tag
+            --verify-tag \
+            $PRERELEASE_FLAG
 
   # ── Public Release (distribution hub, user-facing) ──────────────
+  # Runs for ALL tags (RC = pre-release, stable = latest)
   release-public:
-    needs: build
+    needs: [preflight, build]
     runs-on: [self-hosted, worldsynth]
     steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
       - name: Download artifacts
         uses: actions/download-artifact@v4
         with:
           name: release-linux-x86_64
           path: dist/
 
+      - name: Verify public repo docs are up to date
+        env:
+          GH_TOKEN: ${{ secrets.PUBLIC_REPO_TOKEN }}
+        run: |
+          TAG="${{ needs.preflight.outputs.tag }}"
+          IS_PRERELEASE="${{ needs.preflight.outputs.is_prerelease }}"
+
+          # Check if public repo README exists and has content
+          README_SIZE=$(gh api repos/silentspike/worldsynth/contents/README.md \
+            --jq '.size' 2>/dev/null || echo "0")
+
+          if [ "$README_SIZE" = "0" ] || [ "$README_SIZE" -lt 100 ] 2>/dev/null; then
+            if [ "$IS_PRERELEASE" = "true" ]; then
+              echo "::warning::Public repo README missing or minimal — acceptable for pre-release"
+            else
+              echo "::error::Public repo README missing or too small (${README_SIZE} bytes) — update before stable release"
+              exit 1
+            fi
+          else
+            echo "::notice::Public repo README OK (${README_SIZE} bytes)"
+          fi
+
       - name: Create public release
         env:
           GH_TOKEN: ${{ secrets.PUBLIC_REPO_TOKEN }}
         run: |
-          TAG="${{ needs.build.outputs.tag }}"
-          VERSION="${{ needs.build.outputs.version }}"
+          TAG="${{ needs.preflight.outputs.tag }}"
+          VERSION="${{ needs.preflight.outputs.version }}"
+          IS_RC="${{ needs.preflight.outputs.is_rc }}"
+          IS_PRERELEASE="${{ needs.preflight.outputs.is_prerelease }}"
 
-          # Create user-facing release notes
+          # Build release notes
+          if [ "$IS_RC" = "true" ]; then
+            RC_NOTICE="
+          > **Release Candidate** — This is a pre-release for testing.
+          > Not recommended for production use.
+          "
+          else
+            RC_NOTICE=""
+          fi
+
           cat > /tmp/release-notes-public.md << NOTES
           ## WorldSynth ${TAG}
-
+          ${RC_NOTICE}
           ### Downloads
 
           | Platform | File |
@@ -166,12 +300,20 @@ jobs:
           \`\`\`
 
           ---
-          See the [project repository](https://github.com/silentspike/worldsynth) for more information.
+          See the [project page](https://github.com/silentspike/worldsynth) for documentation and guides.
           NOTES
+
+          # Determine release flags
+          RELEASE_FLAGS=""
+          if [ "$IS_PRERELEASE" = "true" ]; then
+            RELEASE_FLAGS="--prerelease"
+          else
+            RELEASE_FLAGS="--latest"
+          fi
 
           # Create release on public repo
           gh release create "$TAG" dist/* \
             --repo silentspike/worldsynth \
             --title "WorldSynth ${TAG}" \
             --notes-file /tmp/release-notes-public.md \
-            --latest
+            $RELEASE_FLAGS
