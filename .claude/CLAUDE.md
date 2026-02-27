@@ -18,6 +18,8 @@
 - @panic in Production Code Paths
 - Secrets committen (.env, *.key, *.pem)
 - "Production ready" behaupten ohne Evidence (Command + Output)
+- Issues schliessen ohne explizite User-Freigabe
+- Committen oder pushen ohne explizite User-Freigabe
 
 ### IMMER
 - GitHub Issue lesen BEVOR du mit einem WP startest (Dependencies, ACs, Steps)
@@ -27,7 +29,7 @@
 - comptime fuer LUTs und Lookup-Tabellen
 - Error Unions (`!T`) statt @panic
 - `zig build` + `zig build test` vor jedem Commit
-- Nach WP-Abschluss: Alle ACs im Issue mit Evidence (Command + Output) verifizieren, dann Issue schliessen
+- Nach WP-Abschluss: AC-Ergebnisse (pass/fail + Command + Output) direkt in den Issue Body schreiben (`gh issue edit`)
 - Evidence Protocol: Jeder Claim braucht Command + Output
 
 ## REQUIRED GUIDELINES
@@ -57,7 +59,7 @@ Trailer: `Co-Authored-By: Claude <noreply@anthropic.com>`
 3. **Implementieren:** Gemaess Issue-Spezifikation
 4. **Verifizieren:** `zig build && zig build test`
 5. **Committen:** `feat(scope): description (WP-XXX)`
-6. **Done:** Alle ACs mit Evidence verifizieren, dann `gh issue close N -R silentspike/worldsynth-dev`
+6. **Done:** Alle ACs mit Evidence verifizieren, Ergebnisse in den Issue Body schreiben (`gh issue edit N -R silentspike/worldsynth-dev`)
 
 ## PROJECT CONTEXT
 
