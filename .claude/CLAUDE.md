@@ -13,7 +13,7 @@
 - f64 ausserhalb ZDF-Filter-Integratoren
 - Blocking Calls im Audio-Thread
 - Mutex/Alloc in log_rt() (Lock-free Logging!)
-- WP starten dessen Dependencies nicht in `.wp-done/` existieren
+- WP starten dessen Dependency-Issues noch OPEN sind
 - Direkt auf main committen
 - Ausserhalb deines Scopes (WP-123..142) arbeiten
 - @panic in Production Code Paths
@@ -22,12 +22,12 @@
 
 ### IMMER
 - GitHub Issue lesen BEVOR du mit einem WP startest (Dependencies, ACs, Steps)
-- Readiness Check: `test -f .wp-done/WP-XXX` fuer JEDE Dependency (fast alle WPs haben Blocker!)
+- Readiness Check: Dependency-Issues muessen CLOSED sein bevor du ein WP startest (`gh issue view N -R silentspike/worldsynth-dev --json state -q '.state'`)
 - Preallocated Buffers fuer RT-Code
 - Error Unions (`!T`) statt @panic
 - `zig build` + `zig build test` vor jedem Commit
 - YAML-Syntax validieren fuer CI-Workflows
-- WP-Done Marker nach Abschluss: `touch .wp-done/WP-XXX`
+- Nach WP-Abschluss: Alle ACs im Issue mit Evidence (Command + Output) verifizieren, dann Issue schliessen
 - Evidence Protocol: Jeder Claim braucht Command + Output
 
 ## REQUIRED GUIDELINES
@@ -53,12 +53,12 @@ Trailer: `Co-Authored-By: Claude <noreply@anthropic.com>`
 
 ### WP-Workflow
 1. **Issue lesen:** `gh issue view N -R silentspike/worldsynth-dev`
-2. **Dependencies pruefen:** `test -f .wp-done/WP-XXX` fuer ALLE Blocker (fast alle WPs abhaengig!)
+2. **Dependencies pruefen:** Alle `blocked by #N` Issues muessen CLOSED sein
 3. **Implementieren:** Gemaess Issue-Spezifikation
 4. **Verifizieren:** `zig build && zig build test`
 5. **CI-Workflows:** `python3 -c "import yaml; yaml.safe_load(open('.github/workflows/ci.yml'))"`
 6. **Committen:** `feat(scope): description (WP-XXX)`
-7. **Done-Marker:** `touch .wp-done/WP-XXX`
+7. **Done:** Alle ACs mit Evidence verifizieren, dann `gh issue close N -R silentspike/worldsynth-dev`
 
 ## PROJECT CONTEXT
 
