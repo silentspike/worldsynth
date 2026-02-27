@@ -41,3 +41,9 @@ clap-sdk/build/
 
 # Worktrees (local only, not tracked)
 .worktrees/
+
+# Sprint Worktrees (parallel development)
+/s1-foundation/
+/s2-dsp-clap/
+/s3-ui/
+/s4-integration/
