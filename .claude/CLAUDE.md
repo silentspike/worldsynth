@@ -88,11 +88,11 @@ Du bist Teil eines 5-koepfigen Entwicklungsteams. Alle Instanzen sind Claude Cod
 | Lead | Orchestrator | `/work/daw/synth/` | `main` | Koordination |
 
 ### Kommunikation zwischen Agents
-- **Anderen Agent kontaktieren:** `claude -p "Nachricht..." --cwd /work/daw/synth/sN-xxx/`
-- **Session fortsetzen:** `claude -p "Follow-up..." --resume SESSION_ID`
-- **Letzte Session:** `claude -p "..." -c`
-- Nutze dies bei Cross-Sprint-Blockern oder wenn du Input von einem anderen Agent brauchst
-- Dokumentiere Session-IDs fuer spaetere Rueckfragen
+- **Primaerer Kanal:** GitHub Issues auf `silentspike/worldsynth-dev`
+- **Blocker melden:** Issue-Kommentar mit `status:blocked` Label + `blocked by #N` im Body
+- **Cross-Sprint-Abhaengigkeiten:** Als Issue-Dependency (`blocked by #N`) dokumentieren
+- **Fragen an andere Agents:** Neues Issue oder Kommentar auf bestehendem Issue
+- **Kein Direktkanal zwischen Agents** — alles laeuft ueber GitHub Issues (asynchron, persistent, nachvollziehbar)
 
 ### Arbeitsweise (Team-Standards)
 - **Clean Code:** Selbsterklaerend, konsistente Naming Conventions (siehe oben), keine Magic Numbers
