@@ -1,0 +1,80 @@
+name: PR Link Check
+
+on:
+  pull_request_target:
+    types: [opened, edited]
+
+permissions:
+  pull-requests: write
+  issues: write
+
+jobs:
+  check-issue-link:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/github-script@v7
+        with:
+          script: |
+            const pr = context.payload.pull_request;
+            const body = pr.body || '';
+            const labels = pr.labels.map(l => l.name);
+
+            // Skip if explicitly marked
+            if (labels.includes('skip-link-check')) {
+              core.info('Skipping link check (skip-link-check label)');
+              return;
+            }
+
+            // Check for WP reference or issue link
+            const hasWpRef = /WP-\d{3}/i.test(body);
+            const hasCloses = /closes\s+#\d+/i.test(body);
+            const hasRefs = /refs\s+#\d+/i.test(body);
+            const hasFixes = /fixes\s+#\d+/i.test(body);
+            const hasResolves = /resolves\s+#\d+/i.test(body);
+            const hasIssueLink = /github\.com\/.*\/issues\/\d+/.test(body);
+
+            const hasLink = hasWpRef || hasCloses || hasRefs || hasFixes || hasResolves || hasIssueLink;
+
+            if (!hasLink) {
+              // Add label
+              try {
+                await github.rest.issues.addLabels({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: pr.number,
+                  labels: ['quality:needs-link']
+                });
+              } catch {}
+
+              // Post comment
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: pr.number,
+                body: [
+                  '## Missing Issue/WP Reference',
+                  '',
+                  'This PR body does not contain a reference to a GitHub Issue or Work Package.',
+                  '',
+                  '**Please add one of the following to the PR body:**',
+                  '- `WP-XXX` (Work Package number)',
+                  '- `Closes #N` (auto-close linked issue)',
+                  '- `Refs #N` (reference without closing)',
+                  '- `Fixes #N` (auto-close linked issue)',
+                  '',
+                  '**To skip this check** (infra/CI-only PRs): add the `skip-link-check` label.',
+                ].join('\n')
+              });
+
+              core.setFailed('PR body must contain an Issue reference (WP-XXX, Closes #N, Refs #N, or Fixes #N)');
+            } else {
+              // Remove label if it was previously set
+              try {
+                await github.rest.issues.removeLabel({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: pr.number,
+                  name: 'quality:needs-link'
+                });
+              } catch {}
+            }

@@ -68,6 +68,21 @@ jobs:
               /ssh |systemctl |curl.*health|docker |deploy|System\/Artifact/i.test(c.body)
             );
 
+            // --- Check 7+8: Benchmark-Sektion braucht echte Messwerte ---
+            const hasBenchmarkSection = /## Benchmarks/i.test(body);
+            let benchmarkMissing = false;
+            if (hasBenchmarkSection && hasReport) {
+              const allReportText = verifyComments.map(c => c.body).join('\n');
+              const hasAcB1 = /AC-B1/i.test(allReportText);
+              const hasMeasurements = /\d+\s*(ns|µs|us|ms|fps|Hz|%|s\/op|ops\/s|MB\/s)/i.test(allReportText);
+              benchmarkMissing = !hasAcB1 || !hasMeasurements;
+            }
+
+            // --- Check 9: NOT Tested Feld im Report ---
+            const reportHasNotTested = hasReport ? verifyComments.some(c =>
+              /not\s+tested/i.test(c.body)
+            ) : true;
+
             // Failures sammeln
             const failures = [];
             if (!hasVerified) {
@@ -87,6 +102,15 @@ jobs:
             }
             if (isScopeFull && !hasDeployEvidence) {
               failures.push('scope:full requires deploy/system evidence in Verify-Report');
+            }
+            if (hasBenchmarkSection && !hasReport) {
+              failures.push('Issue has ## Benchmarks section but no Verify-Report — benchmark evidence (AC-B1 with measurements) required');
+            }
+            if (benchmarkMissing) {
+              failures.push('Issue has ## Benchmarks section but Verify-Report has no benchmark measurements (AC-B1 with ns/ms/fps values required)');
+            }
+            if (hasReport && !reportHasNotTested) {
+              failures.push('Verify-Report missing "NOT Tested" field — must document what was NOT tested');
             }
 
             if (failures.length > 0) {
