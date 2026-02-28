@@ -15,6 +15,7 @@ const std = @import("std");
 const builtin = @import("builtin");
 const tables = @import("tables.zig");
 const tables_adaa = @import("tables_adaa.zig");
+const tables_blep = @import("tables_blep.zig");
 
 /// Threshold enforcement only in release builds.
 const enforce = builtin.mode == .ReleaseFast or builtin.mode == .ReleaseSmall;
@@ -195,8 +196,44 @@ test "bench: WP-002 ADAA accuracy [max error < 1e-5]" {
     try std.testing.expect(max_err < 1e-5);
 }
 
+// ── WP-003: PolyBLEP Correction ─────────────────────────────────────
+
+const blep_inputs: [BLOCK]f32 = blk: {
+    var p: [BLOCK]f32 = undefined;
+    var i: usize = 0;
+    while (i < BLOCK) : (i += 1) {
+        p[i] = @as(f32, @floatFromInt(i)) / @as(f32, BLOCK);
+    }
+    break :blk p;
+};
+
+fn blep_correction_body(j: usize) callconv(.@"inline") f32 {
+    return tables_blep.blep_correction(blep_inputs[j]);
+}
+
+test "bench: WP-003 blep_correction 128 lookups [< 500ns]" {
+    const ns = run_bench(blep_correction_body);
+
+    std.debug.print("\n  [WP-003] blep_correction: {}ns / {} lookups (limit: <500ns)\n", .{ ns, BLOCK });
+    if (enforce) try std.testing.expect(ns < 500);
+}
+
+test "bench: WP-003 BLEP accuracy [max error < 1e-4]" {
+    var max_err: f64 = 0;
+    var j: usize = 0;
+    while (j < tables_blep.BLEP_SIZE * 2) : (j += 1) {
+        const t: f64 = @as(f64, @floatFromInt(j)) / @as(f64, tables_blep.BLEP_SIZE) - 1.0;
+        const expected: f64 = if (t < 0.0) t * t + 2.0 * t + 1.0 else -t * t + 2.0 * t - 1.0;
+        const actual: f64 = @as(f64, tables_blep.BLEP_TABLE[j]);
+        const err = @abs(expected - actual);
+        if (err > max_err) max_err = err;
+    }
+
+    std.debug.print("\n  [WP-003] BLEP max error: {e:.2} (limit: <1e-4)\n", .{max_err});
+    try std.testing.expect(max_err < 1e-4);
+}
+
 // ── Future WPs add benchmarks below ──────────────────────────────────
-// WP-003: BLEP correction benchmarks (added when tables_blep.zig lands)
 // WP-004: sin_fast_poly, exp_fast vs builtins
 // WP-005: SIMD kernel benchmarks (AVX2 vs SSE4 vs Scalar)
 // ...
