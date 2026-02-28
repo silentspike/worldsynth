@@ -96,19 +96,19 @@ const adaa_inputs: [BLOCK]f32 = blk: {
 // Compares: sine_fast (safe, with wrapping) vs sine_lookup (optimized, no wrap)
 // Optimizations measured: delta-table interpolation, @floor removal
 
-fn sine_fast_body(j: usize) callconv(.@"inline") f32 {
+inline fn sine_fast_body(j: usize) f32 {
     return tables.sine_fast(sine_phases[j]);
 }
 
-fn sine_lookup_body(j: usize) callconv(.@"inline") f32 {
+inline fn sine_lookup_body(j: usize) f32 {
     return tables.sine_lookup(sine_phases[j]);
 }
 
-fn sin_builtin_body(j: usize) callconv(.@"inline") f32 {
+inline fn sin_builtin_body(j: usize) f32 {
     return @sin(sine_phases[j] * 2.0 * std.math.pi);
 }
 
-fn midi_freq_body(j: usize) callconv(.@"inline") f32 {
+inline fn midi_freq_body(j: usize) f32 {
     return tables.MIDI_FREQ[j];
 }
 
@@ -169,7 +169,7 @@ test "bench: WP-001 MIDI_FREQ 128 lookups [< 100ns]" {
 
 // ── WP-002: ADAA Antiderivative LUT ──────────────────────────────────
 
-fn adaa_lookup_body(j: usize) callconv(.@"inline") f32 {
+inline fn adaa_lookup_body(j: usize) f32 {
     return tables_adaa.adaa_lookup(adaa_inputs[j]);
 }
 
