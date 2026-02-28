@@ -31,6 +31,7 @@ const builtin = @import("builtin");
 const tables = @import("tables.zig");
 const tables_adaa = @import("tables_adaa.zig");
 const tables_blep = @import("tables_blep.zig");
+const tables_approx = @import("tables_approx.zig");
 
 // ── Configuration ───────────────────────────────────────────────────
 
@@ -181,6 +182,24 @@ const adaa_inputs: [BLOCK]f32 = blk: {
     var i: usize = 0;
     while (i < BLOCK) : (i += 1) {
         p[i] = -1.0 + 2.0 * @as(f32, @floatFromInt(i)) / @as(f32, BLOCK);
+    }
+    break :blk p;
+};
+
+const approx_sin_inputs: [BLOCK]f32 = blk: {
+    var p: [BLOCK]f32 = undefined;
+    var i: usize = 0;
+    while (i < BLOCK) : (i += 1) {
+        p[i] = -std.math.pi + 2.0 * std.math.pi * @as(f32, @floatFromInt(i)) / @as(f32, BLOCK);
+    }
+    break :blk p;
+};
+
+const approx_exp_inputs: [BLOCK]f32 = blk: {
+    var p: [BLOCK]f32 = undefined;
+    var i: usize = 0;
+    while (i < BLOCK) : (i += 1) {
+        p[i] = -10.0 + 20.0 * @as(f32, @floatFromInt(i)) / @as(f32, BLOCK);
     }
     break :blk p;
 };
@@ -356,6 +375,102 @@ test "bench: WP-003 BLEP accuracy [max error < 1e-4]" {
     try std.testing.expect(max_err < 1e-4);
 }
 
+// ── WP-004: Polynom-Approximationen ────────────────────────────────
+// Issue: #6 | Typ: cycles/call + accuracy
+// Schwellwerte (HART, aus Issue):
+//   sin_fast_poly >= 2x vs @sin (scalar)
+//   exp_fast >= 2x vs @exp (scalar)
+//   sin max error < 1e-4 (sweep [-pi, pi])
+//   exp relative error < 1% (sweep [-10, 10])
+
+fn sin_fast_poly_body(j: usize) callconv(.@"inline") f32 {
+    return tables_approx.sin_fast_poly(approx_sin_inputs[j]);
+}
+
+fn sin_builtin_scalar_body(j: usize) callconv(.@"inline") f32 {
+    return @sin(approx_sin_inputs[j]);
+}
+
+fn exp_fast_body(j: usize) callconv(.@"inline") f32 {
+    return tables_approx.exp_fast(approx_exp_inputs[j]);
+}
+
+fn exp_builtin_body(j: usize) callconv(.@"inline") f32 {
+    return @exp(approx_exp_inputs[j]);
+}
+
+test "bench: WP-004 sin_fast_poly vs @sin [>= 2x]" {
+    const poly = run_bench_scalar(sin_fast_poly_body);
+    const sin = run_bench_scalar(sin_builtin_scalar_body);
+    const poly_f: f64 = @floatFromInt(poly.median);
+    const sin_f: f64 = @floatFromInt(sin.median);
+    const speedup = if (poly_f > 0) sin_f / poly_f else 0;
+
+    std.debug.print(
+        \\
+        \\  [WP-004] sin_fast_poly vs @sin — scalar, {} Samples, {} Runs
+        \\    sin_fast_poly: median {}ns | avg {}ns | min {}ns | max {}ns
+        \\    @sin(f32):     median {}ns | avg {}ns | min {}ns | max {}ns
+        \\    Speedup: {d:.1}x (median/median)
+        \\    Schwelle: >= 2.0x (Issue #6)
+        \\
+    , .{ BLOCK, RUNS, poly.median, poly.avg, poly.min, poly.max, sin.median, sin.avg, sin.min, sin.max, speedup });
+    if (enforce) try std.testing.expect(speedup >= 2.0);
+}
+
+test "bench: WP-004 exp_fast vs @exp [>= 2x]" {
+    const fast = run_bench_scalar(exp_fast_body);
+    const exp = run_bench_scalar(exp_builtin_body);
+    const fast_f: f64 = @floatFromInt(fast.median);
+    const exp_f: f64 = @floatFromInt(exp.median);
+    const speedup = if (fast_f > 0) exp_f / fast_f else 0;
+
+    std.debug.print(
+        \\
+        \\  [WP-004] exp_fast vs @exp — scalar, {} Samples, {} Runs
+        \\    exp_fast: median {}ns | avg {}ns | min {}ns | max {}ns
+        \\    @exp(f32): median {}ns | avg {}ns | min {}ns | max {}ns
+        \\    Speedup: {d:.1}x (median/median)
+        \\    Schwelle: >= 2.0x (Issue #6)
+        \\
+    , .{ BLOCK, RUNS, fast.median, fast.avg, fast.min, fast.max, exp.median, exp.avg, exp.min, exp.max, speedup });
+    if (enforce) try std.testing.expect(speedup >= 2.0);
+}
+
+test "bench: WP-004 sin_fast_poly accuracy [max error < 1e-4]" {
+    var max_err: f64 = 0;
+    const steps: usize = 10_000;
+    var i: usize = 0;
+    while (i <= steps) : (i += 1) {
+        const x: f64 = -std.math.pi + 2.0 * std.math.pi * @as(f64, @floatFromInt(i)) / @as(f64, steps);
+        const expected = @sin(x);
+        const actual: f64 = @as(f64, tables_approx.sin_fast_poly(@as(f32, @floatCast(x))));
+        const err = @abs(expected - actual);
+        if (err > max_err) max_err = err;
+    }
+    std.debug.print("\n  [WP-004] sin_fast_poly max error: {e:.2} (limit: <1e-4)\n", .{max_err});
+    // Accuracy: IMMER enforced
+    try std.testing.expect(max_err < 1e-4);
+}
+
+test "bench: WP-004 exp_fast accuracy [rel error < 1%]" {
+    var max_rel_err: f64 = 0;
+    const steps: usize = 10_000;
+    var i: usize = 0;
+    while (i <= steps) : (i += 1) {
+        const x: f64 = -10.0 + 20.0 * @as(f64, @floatFromInt(i)) / @as(f64, steps);
+        const expected = @exp(x);
+        const actual: f64 = @as(f64, tables_approx.exp_fast(@as(f32, @floatCast(x))));
+        if (expected > 1e-10) {
+            const rel_err = @abs(actual - expected) / expected;
+            if (rel_err > max_rel_err) max_rel_err = rel_err;
+        }
+    }
+    std.debug.print("\n  [WP-004] exp_fast max rel error: {d:.4}% (limit: <1%)\n", .{max_rel_err * 100.0});
+    // Accuracy: IMMER enforced
+    try std.testing.expect(max_rel_err < 0.01);
+}
+
 // ============================================================================
 // WP BENCHMARK SCHWELLWERT-REFERENZ
 // ============================================================================
@@ -363,10 +478,7 @@ test "bench: WP-003 BLEP accuracy [max error < 1e-4]" {
 // Helper-Zuordnung: cycles/block -> run_bench(), latency/call -> run_bench_call(),
 //                   scalar A/B -> run_bench_scalar(), accuracy -> immer enforced
 //
-// WP-004 | #6 | cycles/call + accuracy
-//   sin_fast_poly >= 2x vs @sin (scalar)
-//   exp_fast >= 2x vs @exp (scalar)
-//   sin error < 1e-4 | exp error < 1% relativ
+// WP-004 | #6 | cycles/call + accuracy — IMPLEMENTIERT (oben)
 //
 // WP-005 | #7 | cycles/block
 //   simd_mul AVX2 >= 1.8x vs SSE4

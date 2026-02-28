@@ -4,6 +4,7 @@ pub const engine = struct {
     pub const tables = @import("engine/tables.zig");
     pub const tables_adaa = @import("engine/tables_adaa.zig");
     pub const tables_blep = @import("engine/tables_blep.zig");
+    pub const tables_approx = @import("engine/tables_approx.zig");
     pub const bench = @import("engine/bench.zig");
 };
 
@@ -15,5 +16,6 @@ test {
     _ = engine.tables;
     _ = engine.tables_adaa;
     _ = engine.tables_blep;
+    _ = engine.tables_approx;
     _ = engine.bench;
 }
