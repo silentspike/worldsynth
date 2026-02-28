@@ -27,6 +27,7 @@ const SINE_DELTA: [SINE_LUT_SIZE]f32 = blk: {
     break :blk table;
 };
 
+
 /// Fast sine lookup with linear interpolation.
 /// `phase` is wrapped to [0.0, 1.0) internally, any input value is valid.
 pub inline fn sine_fast(phase: f32) f32 {
@@ -35,7 +36,7 @@ pub inline fn sine_fast(phase: f32) f32 {
     const idx: usize = @intFromFloat(idx_f);
     const frac = idx_f - @as(f32, @floatFromInt(idx));
     const i = idx & SINE_LUT_MASK;
-    return SINE_LUT[i] + frac * SINE_DELTA[i];
+    return @mulAdd(f32, frac, SINE_DELTA[i], SINE_LUT[i]);
 }
 
 /// Optimized sine lookup for hot audio paths. Phase MUST be in [0.0, 1.0).
@@ -45,7 +46,7 @@ pub inline fn sine_lookup(phase: f32) f32 {
     const idx: usize = @intFromFloat(idx_f);
     const frac = idx_f - @as(f32, @floatFromInt(idx));
     const i = idx & SINE_LUT_MASK;
-    return SINE_LUT[i] + frac * SINE_DELTA[i];
+    return @mulAdd(f32, frac, SINE_DELTA[i], SINE_LUT[i]);
 }
 
 // ── MIDI Note to Frequency Table (comptime, 128 entries) ──────────────

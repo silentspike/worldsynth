@@ -29,7 +29,7 @@ pub inline fn blep_correction(t: f32) f32 {
     const idx_f = clamped * @as(f32, BLEP_SIZE * 2 - 1);
     const idx: usize = @min(@as(usize, @intFromFloat(idx_f)), BLEP_SIZE * 2 - 2);
     const frac = idx_f - @as(f32, @floatFromInt(idx));
-    return BLEP_TABLE[idx] + frac * (BLEP_TABLE[idx + 1] - BLEP_TABLE[idx]);
+    return @mulAdd(f32, frac, BLEP_TABLE[idx + 1] - BLEP_TABLE[idx], BLEP_TABLE[idx]);
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────
