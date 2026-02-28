@@ -33,6 +33,7 @@ const tables_adaa = @import("tables_adaa.zig");
 const tables_blep = @import("tables_blep.zig");
 const tables_approx = @import("tables_approx.zig");
 const tables_simd = @import("tables_simd.zig");
+const voice = @import("../dsp/voice.zig");
 
 // ── Configuration ───────────────────────────────────────────────────
 
@@ -608,6 +609,151 @@ test "bench: WP-005 simd_reduce_add 128S (Tuning)" {
     // Informativer Vergleich — kein enforce (kein fester Schwellwert im Issue)
 }
 
+// ── WP-006: VoicePool AoSoA ───────────────────────────────────────
+// Issue: #8 | Typ: cycles/block + cache
+// Schwellwerte (HART, aus Issue):
+//   64V 128S baseline (Referenzwert) | ns/voice < 500ns
+
+test "bench: WP-006 VoicePool 64V 128S AoSoA [ns/voice < 500]" {
+    var pool: voice.VoicePool = undefined;
+    pool.init();
+    // Activate all 64 voices with test data
+    for (&pool.hot) |*chunk| {
+        for (0..voice.CHUNK_SIZE) |si| {
+            chunk.active[si] = true;
+            chunk.phase_inc[si] = 0.01;
+            chunk.amplitude[si] = 0.5;
+        }
+    }
+
+    // Warmup: iterate all chunks, 128 samples per voice
+    for (0..WARMUP) |_| {
+        for (&pool.hot) |*chunk| {
+            for (0..BLOCK) |_| {
+                for (0..voice.CHUNK_SIZE) |si| {
+                    chunk.phase[si] += chunk.phase_inc[si];
+                    chunk.prev_output[si] = chunk.amplitude[si] * chunk.phase[si];
+                }
+            }
+        }
+        std.mem.doNotOptimizeAway(&pool);
+    }
+
+    // Measure
+    var samples: [RUNS]u64 = undefined;
+    for (&samples) |*s| {
+        var timer = std.time.Timer.start() catch {
+            s.* = 0;
+            continue;
+        };
+        for (0..ITERS) |_| {
+            for (&pool.hot) |*chunk| {
+                for (0..BLOCK) |_| {
+                    for (0..voice.CHUNK_SIZE) |si| {
+                        chunk.phase[si] += chunk.phase_inc[si];
+                        chunk.prev_output[si] = chunk.amplitude[si] * chunk.phase[si];
+                    }
+                }
+            }
+            std.mem.doNotOptimizeAway(&pool);
+        }
+        s.* = timer.read() / ITERS;
+    }
+    const r = aggregate(samples);
+    const ns_per_voice = r.median / voice.MAX_VOICES;
+
+    std.debug.print(
+        \\
+        \\  [WP-006] VoicePool 64V 128S AoSoA — {} Runs
+        \\    median: {}ns/block | avg: {}ns | min: {}ns | max: {}ns
+        \\    ns/voice: {} (median/64)
+        \\    Budget: {d:.4}% von 2.9ms
+        \\    Schwelle: ns/voice < 500ns (Issue #8)
+        \\
+    , .{ RUNS, r.median, r.avg, r.min, r.max, ns_per_voice, budget_pct(r.median) });
+    if (enforce) try std.testing.expect(ns_per_voice < 500);
+}
+
+test "bench: WP-006 VoicePool voice scaling (Tuning)" {
+    var pool: voice.VoicePool = undefined;
+    pool.init();
+
+    const voice_counts = [_]usize{ 8, 16, 32, 64 };
+    var results: [voice_counts.len]u64 = undefined;
+
+    for (voice_counts, 0..) |vc, vi| {
+        // Activate vc voices
+        pool.init();
+        for (0..vc) |v| {
+            const loc = voice.VoicePool.voice_loc(@intCast(v));
+            pool.hot[loc.chunk].active[loc.slot] = true;
+            pool.hot[loc.chunk].phase_inc[loc.slot] = 0.01;
+            pool.hot[loc.chunk].amplitude[loc.slot] = 0.5;
+        }
+
+        // Warmup
+        for (0..WARMUP) |_| {
+            for (&pool.hot) |*chunk| {
+                for (0..BLOCK) |_| {
+                    for (0..voice.CHUNK_SIZE) |si| {
+                        if (chunk.active[si]) {
+                            chunk.phase[si] += chunk.phase_inc[si];
+                            chunk.prev_output[si] = chunk.amplitude[si] * chunk.phase[si];
+                        }
+                    }
+                }
+            }
+            std.mem.doNotOptimizeAway(&pool);
+        }
+
+        // Measure
+        var samples: [RUNS]u64 = undefined;
+        for (&samples) |*s| {
+            var timer = std.time.Timer.start() catch {
+                s.* = 0;
+                continue;
+            };
+            for (0..ITERS) |_| {
+                for (&pool.hot) |*chunk| {
+                    for (0..BLOCK) |_| {
+                        for (0..voice.CHUNK_SIZE) |si| {
+                            if (chunk.active[si]) {
+                                chunk.phase[si] += chunk.phase_inc[si];
+                                chunk.prev_output[si] = chunk.amplitude[si] * chunk.phase[si];
+                            }
+                        }
+                    }
+                }
+                std.mem.doNotOptimizeAway(&pool);
+            }
+            s.* = timer.read() / ITERS;
+        }
+        const r = aggregate(samples);
+        results[vi] = r.median;
+    }
+
+    std.debug.print(
+        \\
+        \\  [WP-006] VoicePool scaling — {} Runs
+        \\    | Voices | ns/block | ns/voice | Linear? |
+        \\    |--------|----------|----------|---------|
+    , .{RUNS});
+    const base_per_voice: f64 = @as(f64, @floatFromInt(results[0])) / 8.0;
+    for (voice_counts, 0..) |vc, vi| {
+        const ns_per_v = results[vi] / vc;
+        const ratio: f64 = if (base_per_voice > 0)
+            @as(f64, @floatFromInt(ns_per_v)) / base_per_voice
+        else
+            0;
+        std.debug.print(
+            "    |   {d:>4} | {d:>8} | {d:>8} | {d:>5.2}x  |\n",
+            .{ vc, results[vi], ns_per_v, ratio },
+        );
+    }
+    std.debug.print("\n", .{});
+    // Informativer Vergleich — kein enforce
+}
+
 // ============================================================================
 // WP BENCHMARK SCHWELLWERT-REFERENZ
 // ============================================================================
@@ -619,7 +765,7 @@ test "bench: WP-005 simd_reduce_add 128S (Tuning)" {
 //
 // WP-005 | #7 | cycles/block — IMPLEMENTIERT (oben)
 //
-// WP-006 | #8 | cycles/block + cache
+// WP-006 | #8 | cycles/block + cache — IMPLEMENTIERT (oben)
 //   64V 128S baseline (Referenzwert) | L1 miss < 5% | ns/voice < 500ns
 //
 // WP-007 | #9 | latency/call

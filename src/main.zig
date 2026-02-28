@@ -9,6 +9,10 @@ pub const engine = struct {
     pub const bench = @import("engine/bench.zig");
 };
 
+pub const dsp = struct {
+    pub const voice = @import("dsp/voice.zig");
+};
+
 pub fn main() void {
     std.debug.print("WorldSynth starting...\n", .{});
 }
@@ -20,4 +24,5 @@ test {
     _ = engine.tables_approx;
     _ = engine.tables_simd;
     _ = engine.bench;
+    _ = dsp.voice;
 }
