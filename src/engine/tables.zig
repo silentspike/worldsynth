@@ -2,6 +2,7 @@ const std = @import("std");
 
 // ── Sine Look-Up Table (comptime, 2048 entries) ───────────────────────
 pub const SINE_LUT_SIZE: usize = 2048;
+const SINE_LUT_MASK: usize = SINE_LUT_SIZE - 1;
 
 pub const SINE_LUT: [SINE_LUT_SIZE]f32 = blk: {
     @setEvalBranchQuota(SINE_LUT_SIZE * 4);
@@ -14,16 +15,37 @@ pub const SINE_LUT: [SINE_LUT_SIZE]f32 = blk: {
     break :blk table;
 };
 
+// Pre-computed delta table: SINE_DELTA[i] = SINE_LUT[(i+1) & mask] - SINE_LUT[i]
+// Saves one table load + one subtraction per interpolated lookup.
+const SINE_DELTA: [SINE_LUT_SIZE]f32 = blk: {
+    @setEvalBranchQuota(SINE_LUT_SIZE * 4);
+    var table: [SINE_LUT_SIZE]f32 = undefined;
+    var i: usize = 0;
+    while (i < SINE_LUT_SIZE) : (i += 1) {
+        table[i] = SINE_LUT[(i + 1) & SINE_LUT_MASK] - SINE_LUT[i];
+    }
+    break :blk table;
+};
+
 /// Fast sine lookup with linear interpolation.
-/// `phase` must be in [0.0, 1.0).
+/// `phase` is wrapped to [0.0, 1.0) internally, any input value is valid.
 pub inline fn sine_fast(phase: f32) f32 {
     const wrapped = phase - @floor(phase);
     const idx_f = wrapped * @as(f32, SINE_LUT_SIZE);
     const idx: usize = @intFromFloat(idx_f);
     const frac = idx_f - @as(f32, @floatFromInt(idx));
-    const cur = idx % SINE_LUT_SIZE;
-    const next = (idx + 1) % SINE_LUT_SIZE;
-    return SINE_LUT[cur] + frac * (SINE_LUT[next] - SINE_LUT[cur]);
+    const i = idx & SINE_LUT_MASK;
+    return SINE_LUT[i] + frac * SINE_DELTA[i];
+}
+
+/// Optimized sine lookup for hot audio paths. Phase MUST be in [0.0, 1.0).
+/// Skips @floor wrapping — caller is responsible for phase management.
+pub inline fn sine_lookup(phase: f32) f32 {
+    const idx_f = phase * @as(f32, SINE_LUT_SIZE);
+    const idx: usize = @intFromFloat(idx_f);
+    const frac = idx_f - @as(f32, @floatFromInt(idx));
+    const i = idx & SINE_LUT_MASK;
+    return SINE_LUT[i] + frac * SINE_DELTA[i];
 }
 
 // ── MIDI Note to Frequency Table (comptime, 128 entries) ──────────────
@@ -60,6 +82,13 @@ test "sine_fast wraps phase correctly" {
     const a = sine_fast(0.0);
     const b = sine_fast(1.0);
     try std.testing.expectApproxEqAbs(a, b, 1e-4);
+}
+
+test "sine_lookup matches sine_fast for phases in [0, 1)" {
+    const phases = [_]f32{ 0.0, 0.125, 0.25, 0.5, 0.75, 0.999 };
+    for (phases) |p| {
+        try std.testing.expectApproxEqAbs(sine_fast(p), sine_lookup(p), 1e-6);
+    }
 }
 
 test "MIDI_FREQ covers expected range" {
