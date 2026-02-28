@@ -1,0 +1,168 @@
+name: Benchmark Regression
+
+on:
+  push:
+    branches: [sprint-1, sprint-2, sprint-3, sprint-4]
+    paths:
+      - 'src/**/*.zig'
+      - 'build.zig'
+      - 'build.zig.zon'
+  pull_request:
+    branches: [sprint-1, sprint-2, sprint-3, sprint-4]
+    paths:
+      - 'src/**/*.zig'
+      - 'build.zig'
+      - 'build.zig.zon'
+
+permissions:
+  pull-requests: write
+  contents: read
+
+jobs:
+  benchmark:
+    runs-on: [self-hosted, worldsynth]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: mlugg/setup-zig@v2
+        with:
+          version: "0.14.1"
+
+      - name: Run benchmarks
+        id: bench
+        run: |
+          # Run tests and capture output (benchmarks are part of test suite)
+          set +e
+          OUTPUT=$(zig build test 2>&1)
+          EXIT_CODE=$?
+          set -e
+
+          # Save full output for debugging
+          echo "$OUTPUT" > benchmark-full-output.txt
+
+          # Extract benchmark lines (format: benchmark: name params = valueunit)
+          BENCH_LINES=$(echo "$OUTPUT" | grep -E '^benchmark:' || true)
+
+          if [ -z "$BENCH_LINES" ]; then
+            echo "has_benchmarks=false" >> "$GITHUB_OUTPUT"
+            echo "No benchmark output found — skipping regression check"
+            exit 0
+          fi
+
+          echo "has_benchmarks=true" >> "$GITHUB_OUTPUT"
+
+          # Convert to JSON for artifact storage
+          echo "[" > benchmark-results.json
+          FIRST=true
+          while IFS= read -r line; do
+            # Parse: benchmark: name params = value_unit
+            NAME=$(echo "$line" | sed -E 's/^benchmark:\s+(\S+).*/\1/')
+            VALUE=$(echo "$line" | sed -E 's/.*=\s*([0-9.]+).*/\1/')
+            UNIT=$(echo "$line" | sed -E 's/.*=\s*[0-9.]+(.*)/\1/' | xargs)
+
+            if [ "$FIRST" = true ]; then
+              FIRST=false
+            else
+              echo "," >> benchmark-results.json
+            fi
+            echo "  {\"name\": \"$NAME\", \"value\": $VALUE, \"unit\": \"$UNIT\"}" >> benchmark-results.json
+          done <<< "$BENCH_LINES"
+          echo "]" >> benchmark-results.json
+
+          echo "Benchmark results:"
+          cat benchmark-results.json
+
+      - name: Save benchmark artifact
+        if: steps.bench.outputs.has_benchmarks == 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: benchmark-results.json
+          key: benchmark-${{ github.ref_name }}-${{ github.sha }}
+
+      - name: Load baseline (PR only)
+        if: github.event_name == 'pull_request' && steps.bench.outputs.has_benchmarks == 'true'
+        id: baseline
+        uses: actions/cache/restore@v4
+        with:
+          path: baseline-results.json
+          key: benchmark-${{ github.base_ref }}-
+          restore-keys: |
+            benchmark-${{ github.base_ref }}-
+
+      - name: Compare benchmarks (PR only)
+        if: github.event_name == 'pull_request' && steps.bench.outputs.has_benchmarks == 'true' && steps.baseline.outputs.cache-hit == 'true'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+
+            let current, baseline;
+            try {
+              current = JSON.parse(fs.readFileSync('benchmark-results.json', 'utf8'));
+              baseline = JSON.parse(fs.readFileSync('baseline-results.json', 'utf8'));
+            } catch (e) {
+              core.info('Could not parse benchmark files — skipping comparison');
+              return;
+            }
+
+            // Build lookup from baseline
+            const baseMap = {};
+            for (const b of baseline) {
+              baseMap[b.name] = b;
+            }
+
+            const rows = [];
+            let hasRegression = false;
+            let hasCritical = false;
+
+            for (const cur of current) {
+              const base = baseMap[cur.name];
+              if (!base) {
+                rows.push(`| ${cur.name} | — | ${cur.value}${cur.unit} | NEW |`);
+                continue;
+              }
+
+              const diff = ((cur.value - base.value) / base.value * 100).toFixed(1);
+              let status = 'OK';
+
+              if (cur.value > base.value * 1.5) {
+                status = 'CRITICAL (+' + diff + '%)';
+                hasCritical = true;
+                hasRegression = true;
+              } else if (cur.value > base.value * 1.2) {
+                status = 'WARNING (+' + diff + '%)';
+                hasRegression = true;
+              } else if (cur.value < base.value * 0.8) {
+                status = 'IMPROVED (' + diff + '%)';
+              }
+
+              rows.push(`| ${cur.name} | ${base.value}${base.unit} | ${cur.value}${cur.unit} | ${status} |`);
+            }
+
+            // Post PR comment
+            const header = hasRegression
+              ? '## Benchmark Regression Detected'
+              : '## Benchmark Results';
+
+            const body = [
+              header,
+              '',
+              '| Benchmark | Baseline | Current | Status |',
+              '|-----------|----------|---------|--------|',
+              ...rows,
+              '',
+              hasRegression
+                ? '> **WARNING:** Benchmarks slower than baseline. >20% = WARNING, >50% = CRITICAL.'
+                : '> All benchmarks within acceptable range.',
+            ].join('\n');
+
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.payload.pull_request.number,
+              body: body
+            });
+
+            if (hasCritical) {
+              core.setFailed('Critical benchmark regression detected (>50% slower)');
+            }
