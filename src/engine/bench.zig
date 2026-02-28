@@ -383,19 +383,19 @@ test "bench: WP-003 BLEP accuracy [max error < 1e-4]" {
 //   sin max error < 1e-4 (sweep [-pi, pi])
 //   exp relative error < 1% (sweep [-10, 10])
 
-fn sin_fast_poly_body(j: usize) callconv(.@"inline") f32 {
+inline fn sin_fast_poly_body(j: usize) f32 {
     return tables_approx.sin_fast_poly(approx_sin_inputs[j]);
 }
 
-fn sin_builtin_scalar_body(j: usize) callconv(.@"inline") f32 {
+inline fn sin_builtin_scalar_body(j: usize) f32 {
     return @sin(approx_sin_inputs[j]);
 }
 
-fn exp_fast_body(j: usize) callconv(.@"inline") f32 {
+inline fn exp_fast_body(j: usize) f32 {
     return tables_approx.exp_fast(approx_exp_inputs[j]);
 }
 
-fn exp_builtin_body(j: usize) callconv(.@"inline") f32 {
+inline fn exp_builtin_body(j: usize) f32 {
     return @exp(approx_exp_inputs[j]);
 }
 
