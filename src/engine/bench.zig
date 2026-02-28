@@ -237,9 +237,12 @@ test "bench: WP-001 sine_fast vs sine_lookup (Tuning)" {
         \\    sine_lookup: median {}ns | avg {}ns | min {}ns | max {}ns  ({d:>5.1}%)
         \\
     , .{
-        BLOCK, RUNS,
-        fast.median, fast.avg, fast.min, fast.max,
-        lookup.median, lookup.avg, lookup.min, lookup.max, delta,
+        BLOCK,         RUNS,
+        fast.median,   fast.avg,
+        fast.min,      fast.max,
+        lookup.median, lookup.avg,
+        lookup.min,    lookup.max,
+        delta,
     });
     // Informativer Vergleich — kein enforce
 }
@@ -322,7 +325,7 @@ test "bench: WP-002 ADAA accuracy [max error < 1e-5]" {
 //   minBLEP < 200ns/korrektur (noch nicht implementiert)
 //   max error < 1e-4
 
-fn blep_correction_body(j: usize) callconv(.@"inline") f32 {
+inline fn blep_correction_body(j: usize) f32 {
     return tables_blep.blep_correction(sine_phases[j]);
 }
 

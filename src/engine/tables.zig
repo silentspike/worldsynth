@@ -27,7 +27,6 @@ const SINE_DELTA: [SINE_LUT_SIZE]f32 = blk: {
     break :blk table;
 };
 
-
 /// Fast sine lookup with linear interpolation.
 /// `phase` is wrapped to [0.0, 1.0) internally, any input value is valid.
 pub inline fn sine_fast(phase: f32) f32 {
