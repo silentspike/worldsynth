@@ -479,7 +479,7 @@ test "bench: WP-004 exp_fast accuracy [rel error < 1%]" {
 //   SIMD_WIDTH == 8 auf AVX2 (comptime assert)
 //   simd_reduce_add: dokumentieren (kein fester Schwellwert)
 
-fn simd_reduce_body(j: usize) callconv(.@"inline") f32 {
+inline fn simd_reduce_body(j: usize) f32 {
     const v: tables_simd.SimdF32 = @splat(sine_phases[j]);
     return tables_simd.simd_reduce_add(v);
 }
@@ -583,8 +583,14 @@ test "bench: WP-005 simd_mul 128S AVX2 vs SSE4 [>= 1.8x]" {
         \\
     , .{
         RUNS,
-        native_r.median, native_r.avg, native_r.min, native_r.max,
-        sse4_r.median,   sse4_r.avg,   sse4_r.min,   sse4_r.max,
+        native_r.median,
+        native_r.avg,
+        native_r.min,
+        native_r.max,
+        sse4_r.median,
+        sse4_r.avg,
+        sse4_r.min,
+        sse4_r.max,
         speedup,
     });
     if (enforce) try std.testing.expect(speedup >= 1.8);
