@@ -32,6 +32,7 @@ const tables = @import("tables.zig");
 const tables_adaa = @import("tables_adaa.zig");
 const tables_blep = @import("tables_blep.zig");
 const tables_approx = @import("tables_approx.zig");
+const tables_simd = @import("tables_simd.zig");
 
 // ── Configuration ───────────────────────────────────────────────────
 
@@ -471,6 +472,136 @@ test "bench: WP-004 exp_fast accuracy [rel error < 1%]" {
     try std.testing.expect(max_rel_err < 0.01);
 }
 
+// ── WP-005: SIMD Kernel ────────────────────────────────────────────
+// Issue: #7 | Typ: cycles/block
+// Schwellwerte (HART, aus Issue):
+//   simd_mul AVX2 (8-wide) >= 1.8x vs SSE4 (4-wide) fuer 128S block
+//   SIMD_WIDTH == 8 auf AVX2 (comptime assert)
+//   simd_reduce_add: dokumentieren (kein fester Schwellwert)
+
+fn simd_reduce_body(j: usize) callconv(.@"inline") f32 {
+    const v: tables_simd.SimdF32 = @splat(sine_phases[j]);
+    return tables_simd.simd_reduce_add(v);
+}
+
+test "bench: WP-005 SIMD_WIDTH == 8 (AVX2)" {
+    std.debug.print("\n  [WP-005] SIMD_WIDTH = {}\n", .{tables_simd.SIMD_WIDTH});
+    if (comptime std.Target.x86.featureSetHas(builtin.cpu.features, .avx2)) {
+        try std.testing.expectEqual(@as(comptime_int, 8), tables_simd.SIMD_WIDTH);
+    }
+}
+
+test "bench: WP-005 simd_mul 128S AVX2 vs SSE4 [>= 1.8x]" {
+    const Native = tables_simd.SimdF32;
+    const NW = tables_simd.SIMD_WIDTH;
+    const Sse4 = @Vector(4, f32);
+
+    // Input data
+    var input_a: [BLOCK]f32 = undefined;
+    var input_b: [BLOCK]f32 = undefined;
+    for (0..BLOCK) |i| {
+        input_a[i] = @as(f32, @floatFromInt(i)) * 0.01;
+        input_b[i] = 1.0 - @as(f32, @floatFromInt(i)) * 0.005;
+    }
+    var output: [BLOCK]f32 = undefined;
+
+    // Warmup (native)
+    for (0..WARMUP) |_| {
+        var i: usize = 0;
+        while (i + NW <= BLOCK) : (i += NW) {
+            const a: Native = input_a[i..][0..NW].*;
+            const b: Native = input_b[i..][0..NW].*;
+            output[i..][0..NW].* = tables_simd.simd_mul(a, b);
+        }
+        std.mem.doNotOptimizeAway(&output);
+    }
+
+    // Native (AVX2) measurement
+    var native_samples: [RUNS]u64 = undefined;
+    for (&native_samples) |*s| {
+        var timer = std.time.Timer.start() catch {
+            s.* = 0;
+            continue;
+        };
+        var iter: usize = 0;
+        while (iter < ITERS) : (iter += 1) {
+            var i: usize = 0;
+            while (i + NW <= BLOCK) : (i += NW) {
+                const a: Native = input_a[i..][0..NW].*;
+                const b: Native = input_b[i..][0..NW].*;
+                output[i..][0..NW].* = tables_simd.simd_mul(a, b);
+            }
+            std.mem.doNotOptimizeAway(&output);
+        }
+        s.* = timer.read() / ITERS;
+    }
+    const native_r = aggregate(native_samples);
+
+    // Warmup (SSE4 = 4-wide)
+    for (0..WARMUP) |_| {
+        var i: usize = 0;
+        while (i + 4 <= BLOCK) : (i += 4) {
+            const a: Sse4 = input_a[i..][0..4].*;
+            const b: Sse4 = input_b[i..][0..4].*;
+            output[i..][0..4].* = a * b;
+        }
+        std.mem.doNotOptimizeAway(&output);
+    }
+
+    // SSE4 (4-wide) measurement
+    var sse4_samples: [RUNS]u64 = undefined;
+    for (&sse4_samples) |*s| {
+        var timer = std.time.Timer.start() catch {
+            s.* = 0;
+            continue;
+        };
+        var iter: usize = 0;
+        while (iter < ITERS) : (iter += 1) {
+            var i: usize = 0;
+            while (i + 4 <= BLOCK) : (i += 4) {
+                const a: Sse4 = input_a[i..][0..4].*;
+                const b: Sse4 = input_b[i..][0..4].*;
+                output[i..][0..4].* = a * b;
+            }
+            std.mem.doNotOptimizeAway(&output);
+        }
+        s.* = timer.read() / ITERS;
+    }
+    const sse4_r = aggregate(sse4_samples);
+
+    const native_f: f64 = @floatFromInt(native_r.median);
+    const sse4_f: f64 = @floatFromInt(sse4_r.median);
+    const speedup = if (native_f > 0) sse4_f / native_f else 0;
+
+    std.debug.print(
+        \\
+        \\  [WP-005] simd_mul 128S — AVX2 vs SSE4, {} Runs
+        \\    AVX2 (8-wide): median {}ns | avg {}ns | min {}ns | max {}ns
+        \\    SSE4 (4-wide): median {}ns | avg {}ns | min {}ns | max {}ns
+        \\    Speedup: {d:.1}x (median/median)
+        \\    Schwelle: >= 1.8x (Issue #7)
+        \\
+    , .{
+        RUNS,
+        native_r.median, native_r.avg, native_r.min, native_r.max,
+        sse4_r.median,   sse4_r.avg,   sse4_r.min,   sse4_r.max,
+        speedup,
+    });
+    if (enforce) try std.testing.expect(speedup >= 1.8);
+}
+
+test "bench: WP-005 simd_reduce_add 128S (Tuning)" {
+    const r = run_bench(simd_reduce_body);
+    std.debug.print(
+        \\
+        \\  [WP-005] simd_reduce_add — {} Samples, {} Runs
+        \\    median: {}ns | avg: {}ns | min: {}ns | max: {}ns
+        \\    Budget: {d:.4}% von 2.9ms
+        \\
+    , .{ BLOCK, RUNS, r.median, r.avg, r.min, r.max, budget_pct(r.median) });
+    // Informativer Vergleich — kein enforce (kein fester Schwellwert im Issue)
+}
+
 // ============================================================================
 // WP BENCHMARK SCHWELLWERT-REFERENZ
 // ============================================================================
@@ -480,9 +611,7 @@ test "bench: WP-004 exp_fast accuracy [rel error < 1%]" {
 //
 // WP-004 | #6 | cycles/call + accuracy — IMPLEMENTIERT (oben)
 //
-// WP-005 | #7 | cycles/block
-//   simd_mul AVX2 >= 1.8x vs SSE4
-//   SIMD_WIDTH == 8 auf AVX2 (comptime assert)
+// WP-005 | #7 | cycles/block — IMPLEMENTIERT (oben)
 //
 // WP-006 | #8 | cycles/block + cache
 //   64V 128S baseline (Referenzwert) | L1 miss < 5% | ns/voice < 500ns
