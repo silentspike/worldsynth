@@ -16,11 +16,13 @@ pub const engine = struct {
 pub const dsp = struct {
     pub const voice = @import("dsp/voice.zig");
     pub const drift = @import("dsp/drift.zig");
+    pub const oscillator = @import("dsp/oscillator.zig");
 };
 
 pub const io = struct {
     pub const jack = @import("io/jack.zig");
     pub const pipewire = @import("io/pipewire.zig");
+    pub const audio_backend = @import("io/audio_backend.zig");
     pub const osc = @import("io/osc.zig");
     pub const midi_learn = @import("io/midi_learn.zig");
     pub const midi = @import("io/midi.zig");
@@ -47,38 +49,35 @@ fn testSine(out_l: [*]f32, out_r: [*]f32, n_frames: u32) void {
 pub fn main() void {
     std.debug.print("WorldSynth starting...\n", .{});
 
-    if (comptime build_options.enable_pipewire) {
-        var pw = io.pipewire.PipeWireClient.init(testSine) catch |err| {
-            std.debug.print("PipeWire init failed: {}\n", .{err});
-            return;
-        };
-        std.debug.print("PipeWire client created. Connecting...\n", .{});
-        pw.start() catch |err| {
-            std.debug.print("PipeWire start failed: {}\n", .{err});
-            pw.deinit();
-            return;
-        };
-        // pw_main_loop_run blocks — deinit after return
-        pw.deinit();
+    var backend = io.audio_backend.AudioBackend.detect_and_init(testSine, null) catch |err| {
+        std.debug.print("Audio backend init failed: {}\n", .{err});
         return;
+    };
+
+    switch (backend) {
+        .pipewire => std.debug.print("Backend: PipeWire\n", .{}),
+        .jack => std.debug.print("Backend: JACK\n", .{}),
     }
 
-    if (comptime build_options.enable_jack) {
-        var jack = io.jack.JackAudioClient.init(testSine, null) catch |err| {
-            std.debug.print("JACK init failed: {}\n", .{err});
-            return;
-        };
-        jack.start() catch |err| {
-            std.debug.print("JACK start failed: {}\n", .{err});
-            jack.deinit();
-            return;
-        };
-        std.debug.print("JACK client active. Press Ctrl+C to quit.\n", .{});
-        // Block until signal
-        while (true) {
-            std.Thread.sleep(100 * std.time.ns_per_ms);
-        }
+    backend.start() catch |err| {
+        std.debug.print("Audio backend start failed: {}\n", .{err});
+        backend.stop();
+        return;
+    };
+
+    // JACK start() returns immediately — spin-wait until signal
+    switch (backend) {
+        .jack => {
+            std.debug.print("JACK client active. Press Ctrl+C to quit.\n", .{});
+            while (true) {
+                std.Thread.sleep(100 * std.time.ns_per_ms);
+            }
+        },
+        .pipewire => {},
     }
+
+    // PipeWire: main loop returned — cleanup
+    backend.stop();
 }
 
 test {
@@ -94,8 +93,10 @@ test {
     _ = engine.bench;
     _ = io.jack;
     _ = io.pipewire;
+    _ = io.audio_backend;
     _ = dsp.voice;
     _ = dsp.drift;
+    _ = dsp.oscillator;
     _ = io.osc;
     _ = io.midi_learn;
     _ = io.midi;
