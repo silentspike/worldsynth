@@ -17,9 +17,11 @@ pub fn build(b: *std.Build) void {
     // ── Target 1: Standalone executable ────────────────────────────
     const exe = b.addExecutable(.{
         .name = "worldsynth",
-        .root_source_file = b.path("src/main.zig"),
-        .target = target,
-        .optimize = optimize,
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("src/main.zig"),
+            .target = target,
+            .optimize = optimize,
+        }),
     });
     exe.root_module.addOptions("build_options", options);
     b.installArtifact(exe);
@@ -36,9 +38,11 @@ pub fn build(b: *std.Build) void {
 
     // ── Tests ──────────────────────────────────────────────────────
     const unit_tests = b.addTest(.{
-        .root_source_file = b.path("src/main.zig"),
-        .target = target,
-        .optimize = optimize,
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("src/main.zig"),
+            .target = target,
+            .optimize = optimize,
+        }),
     });
     unit_tests.root_module.addOptions("build_options", options);
 
