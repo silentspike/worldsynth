@@ -1,6 +1,8 @@
 const std = @import("std");
+const sine_tables = @import("../engine/tables.zig");
+const osc_sine_noise = @import("osc_sine_noise.zig");
 
-// ── Band-Limited Wavetable Oscillator (WP-013, WP-014) ──────────────
+// ── Band-Limited Wavetable Oscillator (WP-013, WP-014, WP-015) ──────
 // comptime mip-mapped wavetables with Hermite cubic interpolation.
 // Saw, Square, Triangle — each 11 octave levels × 2048 samples.
 // Phase in [0, 1). No heap allocation — all tables are comptime.
@@ -169,10 +171,11 @@ inline fn triangle_sample(level: usize, phase: f32) f32 {
 
 /// Process a block of 128 samples for the given wave type.
 /// .saw/.square/.triangle use band-limited wavetables with Hermite interpolation.
-/// Other types output silence (WP-015).
+/// .sine uses LUT lookup from tables.zig. .noise uses xorshift32 PRNG.
+/// .supersaw delegates to .saw (unison detuning is handled by Voice Manager).
 pub fn process_block(phase_ptr: *f32, phase_inc: f32, wave: WaveType, out_buf: *[BLOCK_SIZE]f32) void {
     switch (wave) {
-        .saw => {
+        .saw, .supersaw => {
             var phase = phase_ptr.*;
             const level = select_mip_level(phase_inc);
             for (out_buf) |*sample| {
@@ -202,7 +205,18 @@ pub fn process_block(phase_ptr: *f32, phase_inc: f32, wave: WaveType, out_buf: *
             }
             phase_ptr.* = phase;
         },
-        else => @memset(out_buf, 0),
+        .sine => {
+            var phase = phase_ptr.*;
+            for (out_buf) |*sample| {
+                sample.* = sine_tables.sine_lookup(phase);
+                phase += phase_inc;
+                if (phase >= 1.0) phase -= 1.0;
+            }
+            phase_ptr.* = phase;
+        },
+        .noise => {
+            osc_sine_noise.noise_block(phase_ptr, out_buf);
+        },
     }
 }
 
@@ -268,17 +282,22 @@ test "phase wrapping at high frequency" {
     }
 }
 
-test "unimplemented wave types output silence" {
-    var phase: f32 = 0.5;
+test "all wave types produce non-silence output" {
     const phase_inc: f32 = 440.0 / 44100.0;
     var buf: [BLOCK_SIZE]f32 = undefined;
-    const silent_types = [_]WaveType{ .sine, .noise, .supersaw };
-    for (silent_types) |wt| {
-        @memset(&buf, 42.0); // fill with non-zero
+    const all_types = [_]WaveType{ .sine, .saw, .square, .triangle, .noise, .supersaw };
+    for (all_types) |wt| {
+        var phase: f32 = 0.0;
+        @memset(&buf, 0.0);
         process_block(&phase, phase_inc, wt, &buf);
+        var has_nonzero = false;
         for (buf) |sample| {
-            try std.testing.expectEqual(@as(f32, 0.0), sample);
+            if (sample != 0.0) {
+                has_nonzero = true;
+                break;
+            }
         }
+        try std.testing.expect(has_nonzero);
     }
 }
 
@@ -419,4 +438,86 @@ test "saw at different frequencies produces finite output" {
             }
         }
     }
+}
+
+// ── Sine Tests (WP-015) ─────────────────────────────────────────────
+
+test "sine periodic 440Hz" {
+    var phase: f32 = 0.0;
+    const phase_inc: f32 = 440.0 / 44100.0;
+    var buf: [BLOCK_SIZE]f32 = undefined;
+    process_block(&phase, phase_inc, .sine, &buf);
+    for (buf) |sample| {
+        try std.testing.expect(!std.math.isNan(sample));
+        try std.testing.expect(!std.math.isInf(sample));
+        try std.testing.expect(sample >= -1.0 and sample <= 1.0);
+    }
+    // Sine must oscillate — check positive and negative values exist
+    var has_pos = false;
+    var has_neg = false;
+    for (0..200) |_| {
+        process_block(&phase, phase_inc, .sine, &buf);
+        for (buf) |sample| {
+            if (sample > 0.1) has_pos = true;
+            if (sample < -0.1) has_neg = true;
+        }
+    }
+    try std.testing.expect(has_pos);
+    try std.testing.expect(has_neg);
+}
+
+test "sine at different frequencies" {
+    const freqs = [_]f32{ 20.0, 100.0, 440.0, 1000.0, 5000.0, 15000.0 };
+    var buf: [BLOCK_SIZE]f32 = undefined;
+    for (freqs) |freq| {
+        var phase: f32 = 0.0;
+        const phase_inc = freq / 44100.0;
+        for (0..10) |_| {
+            process_block(&phase, phase_inc, .sine, &buf);
+            for (buf) |sample| {
+                try std.testing.expect(!std.math.isNan(sample));
+                try std.testing.expect(!std.math.isInf(sample));
+                try std.testing.expect(sample >= -1.0 and sample <= 1.0);
+            }
+        }
+    }
+}
+
+// ── Noise Tests (WP-015) ────────────────────────────────────────────
+
+test "noise varies and bounded" {
+    var phase: f32 = 0.0;
+    const phase_inc: f32 = 440.0 / 44100.0;
+    var buf: [BLOCK_SIZE]f32 = undefined;
+    process_block(&phase, phase_inc, .noise, &buf);
+
+    // All values bounded
+    for (buf) |sample| {
+        try std.testing.expect(sample >= -1.0 and sample <= 1.0);
+        try std.testing.expect(!std.math.isNan(sample));
+    }
+    // Not constant (min != max)
+    var min_val: f32 = buf[0];
+    var max_val: f32 = buf[0];
+    for (buf) |sample| {
+        if (sample < min_val) min_val = sample;
+        if (sample > max_val) max_val = sample;
+    }
+    try std.testing.expect(min_val != max_val);
+}
+
+// ── SuperSaw Tests (WP-015) ─────────────────────────────────────────
+
+test "supersaw equals saw" {
+    var phase_saw: f32 = 0.0;
+    var phase_ssaw: f32 = 0.0;
+    const phase_inc: f32 = 440.0 / 44100.0;
+    var buf_saw: [BLOCK_SIZE]f32 = undefined;
+    var buf_ssaw: [BLOCK_SIZE]f32 = undefined;
+    process_block(&phase_saw, phase_inc, .saw, &buf_saw);
+    process_block(&phase_ssaw, phase_inc, .supersaw, &buf_ssaw);
+    for (buf_saw, buf_ssaw) |saw, ssaw| {
+        try std.testing.expectEqual(saw, ssaw);
+    }
+    try std.testing.expectEqual(phase_saw, phase_ssaw);
 }

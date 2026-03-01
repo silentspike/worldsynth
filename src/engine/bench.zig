@@ -1497,6 +1497,144 @@ test "bench: WP-014 BL-WT triangle THD+N [aliase < -80dB]" {
     try std.testing.expect(result.max_alias_db < -80.0);
 }
 
+// ── WP-015: Sine + Noise + SuperSaw ──────────────────────────────────
+// Issue: #17 | Typ: cycles/block
+// Schwellwerte (aus Issue):
+//   sine 128S < 500ns | noise < 300ns | supersaw 7det < 5000ns (7x saw)
+
+test "bench: WP-015 sine 128S [< 500ns/block]" {
+    const phase_inc: f32 = 440.0 / 44100.0;
+
+    // Warmup
+    var w_phase: f32 = 0.0;
+    var w_buf: [BLOCK]f32 = undefined;
+    for (0..WARMUP) |_| {
+        oscillator.process_block(&w_phase, phase_inc, .sine, &w_buf);
+        std.mem.doNotOptimizeAway(&w_buf);
+    }
+
+    // Measure
+    var samples: [RUNS]u64 = undefined;
+    for (&samples) |*s| {
+        var phase: f32 = 0.0;
+        var buf: [BLOCK]f32 = undefined;
+        var timer = std.time.Timer.start() catch {
+            s.* = 0;
+            continue;
+        };
+        for (0..ITERS) |_| {
+            oscillator.process_block(&phase, phase_inc, .sine, &buf);
+            std.mem.doNotOptimizeAway(&buf);
+        }
+        s.* = timer.read() / ITERS;
+    }
+    const r = aggregate(samples);
+
+    std.debug.print(
+        \\
+        \\  [WP-015] Sine LUT — {} Samples, {} Runs
+        \\    median: {}ns/block | avg: {}ns | min: {}ns | max: {}ns
+        \\    Budget: {d:.4}% von 2.9ms
+        \\    Schwelle: < 500ns/block (Issue #17)
+        \\
+    , .{ BLOCK, RUNS, r.median, r.avg, r.min, r.max, budget_pct(r.median) });
+    if (enforce) try std.testing.expect(r.median < 500);
+}
+
+test "bench: WP-015 noise 128S [< 300ns/block]" {
+    // Warmup
+    var w_phase: f32 = 0.0;
+    var w_buf: [BLOCK]f32 = undefined;
+    for (0..WARMUP) |_| {
+        oscillator.process_block(&w_phase, 0.0, .noise, &w_buf);
+        std.mem.doNotOptimizeAway(&w_buf);
+    }
+
+    // Measure
+    var samples: [RUNS]u64 = undefined;
+    for (&samples) |*s| {
+        var phase: f32 = 0.0;
+        var buf: [BLOCK]f32 = undefined;
+        var timer = std.time.Timer.start() catch {
+            s.* = 0;
+            continue;
+        };
+        for (0..ITERS) |_| {
+            oscillator.process_block(&phase, 0.0, .noise, &buf);
+            std.mem.doNotOptimizeAway(&buf);
+        }
+        s.* = timer.read() / ITERS;
+    }
+    const r = aggregate(samples);
+
+    std.debug.print(
+        \\
+        \\  [WP-015] Noise (xorshift32) — {} Samples, {} Runs
+        \\    median: {}ns/block | avg: {}ns | min: {}ns | max: {}ns
+        \\    Budget: {d:.4}% von 2.9ms
+        \\    Schwelle: < 300ns/block (Issue #17)
+        \\
+    , .{ BLOCK, RUNS, r.median, r.avg, r.min, r.max, budget_pct(r.median) });
+    if (enforce) try std.testing.expect(r.median < 300);
+}
+
+test "bench: WP-015 supersaw 7x BL-WT [< 5000ns/block]" {
+    const phase_inc: f32 = 440.0 / 44100.0;
+    // SuperSaw = 7 detuned saws mixed together
+    // Detune spread: ±0.1 semitones typical
+    const detune_cents = [_]f32{ -10, -6, -3, 0, 3, 6, 10 };
+
+    // Warmup
+    var w_phases: [7]f32 = .{0} ** 7;
+    var w_buf: [BLOCK]f32 = undefined;
+    var w_mix: [BLOCK]f32 = undefined;
+    for (0..WARMUP) |_| {
+        @memset(&w_mix, 0);
+        for (&w_phases, detune_cents) |*ph, cents| {
+            const detune_ratio = @exp2(cents / 1200.0);
+            const inc = phase_inc * detune_ratio;
+            oscillator.process_block(ph, inc, .saw, &w_buf);
+            for (&w_mix, w_buf) |*m, s| m.* += s;
+        }
+        std.mem.doNotOptimizeAway(&w_mix);
+    }
+
+    // Measure
+    var samples: [RUNS]u64 = undefined;
+    for (&samples) |*s| {
+        var phases: [7]f32 = .{0} ** 7;
+        var buf: [BLOCK]f32 = undefined;
+        var mix: [BLOCK]f32 = undefined;
+        var timer = std.time.Timer.start() catch {
+            s.* = 0;
+            continue;
+        };
+        for (0..ITERS) |_| {
+            @memset(&mix, 0);
+            for (&phases, detune_cents) |*ph, cents| {
+                const detune_ratio = @exp2(cents / 1200.0);
+                const inc = phase_inc * detune_ratio;
+                oscillator.process_block(ph, inc, .saw, &buf);
+                for (&mix, buf) |*m, sv| m.* += sv;
+            }
+            std.mem.doNotOptimizeAway(&mix);
+        }
+        s.* = timer.read() / ITERS;
+    }
+    const r = aggregate(samples);
+
+    std.debug.print(
+        \\
+        \\  [WP-015] SuperSaw 7x BL-WT — {} Samples, {} Runs
+        \\    median: {}ns/block | avg: {}ns | min: {}ns | max: {}ns
+        \\    Budget: {d:.4}% von 2.9ms
+        \\    Schwelle: < 5000ns/block (Issue #17)
+        \\    (7 detuned saws mixed, ±10 cents spread)
+        \\
+    , .{ BLOCK, RUNS, r.median, r.avg, r.min, r.max, budget_pct(r.median) });
+    if (enforce) try std.testing.expect(r.median < 5000);
+}
+
 // ── THD+N Measurement Infrastructure ─────────────────────────────────
 
 const ThdnResult = struct {
@@ -1675,7 +1813,7 @@ fn bit_reverse(x: usize, bits: usize) usize {
 // WP-014 | #16 | cycles/block + accuracy — IMPLEMENTIERT (oben)
 //   square BL-WT 128S < 2000ns | triangle BL-WT < 2000ns | THD+N < -80dB
 //
-// WP-015 | #17 | cycles/block
+// WP-015 | #17 | cycles/block — IMPLEMENTIERT (oben)
 //   sine 128S < 500ns | noise < 300ns | supersaw 7det < 5000ns
 //
 // WP-016 | #18 | cycles/block
