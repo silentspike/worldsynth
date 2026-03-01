@@ -112,6 +112,23 @@ Du bist **Dev 1** — verantwortlich fuer die DSP-Foundation und den ersten hoer
 - **Worktree:** `/work/daw/synth/s1-foundation/`
 - **Issues:** `gh issue list -R silentspike/worldsynth-dev -l "sprint:s1" --limit 50`
 
+### Benchmark-Philosophie
+
+Benchmarks sind kein Pass/Fail-Gate — sie sind ein **Tuning-Werkzeug**. Ziel: Bottlenecks finden, Overhead reduzieren, alles optimieren. Jeder Benchmark misst was beim jeweiligen Issue an Code betroffen ist, damit wir Settings aendern, nochmal messen, und vorher/nachher vergleichen koennen.
+
+**Iterativer Optimierungs-Zyklus:**
+1. **Messen** — Benchmark laufen lassen, Baseline ermitteln
+2. **Analysieren** — Bottlenecks und Overhead identifizieren
+3. **Optimieren** — Settings aendern, Code optimieren
+4. **Vergleichen** — Benchmark nochmal laufen lassen, Vorher/Nachher vergleichen
+5. **Wiederholen** — bis Schwellwerte erreicht
+
+**Benchmark-Ausgabe muss enthalten:**
+- avg/min/max ueber mehrere Runs (statistisch aussagekraeftig)
+- Budget% (Anteil am 2.9ms Blockbudget bei 128S @ 44.1kHz)
+- Schwellwert + PASS/FAIL
+- Bei Varianten-Vergleichen: Delta% zwischen Varianten
+
 ### Benchmark-Schwellwerte (LESSONS LEARNED — 2026-03-01)
 
 - Issue-Schwellwerte sind oft fuer Server-Hardware kalibriert, nicht fuer Laptop (Ryzen 9 5900HS)
