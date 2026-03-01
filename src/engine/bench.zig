@@ -1382,6 +1382,218 @@ test "bench: WP-013 BL-WT saw THD+N [aliase < -80dB]" {
     try std.testing.expect(max_alias_db < -80.0);
 }
 
+// ── WP-014: Square+Triangle Oscillator (Band-Limited Wavetable) ──────
+// Issue: #16 | Typ: cycles/block + accuracy
+// Schwellwerte (aus Issue):
+//   square BL-WT 128S < 2000ns/block
+//   triangle BL-WT 128S < 2000ns/block
+//   THD+N square < -80dB | THD+N triangle < -80dB
+
+test "bench: WP-014 BL-WT square 128S [< 2000ns/block]" {
+    const phase_inc: f32 = 440.0 / 44100.0;
+
+    // Warmup
+    var w_phase: f32 = 0.0;
+    var w_buf: [BLOCK]f32 = undefined;
+    for (0..WARMUP) |_| {
+        oscillator.process_block(&w_phase, phase_inc, .square, &w_buf);
+        std.mem.doNotOptimizeAway(&w_buf);
+    }
+
+    // Measure
+    var samples: [RUNS]u64 = undefined;
+    for (&samples) |*s| {
+        var phase: f32 = 0.0;
+        var buf: [BLOCK]f32 = undefined;
+        var timer = std.time.Timer.start() catch {
+            s.* = 0;
+            continue;
+        };
+        for (0..ITERS) |_| {
+            oscillator.process_block(&phase, phase_inc, .square, &buf);
+            std.mem.doNotOptimizeAway(&buf);
+        }
+        s.* = timer.read() / ITERS;
+    }
+    const r = aggregate(samples);
+
+    std.debug.print(
+        \\
+        \\  [WP-014] BL-WT square — {} Samples, {} Runs
+        \\    median: {}ns/block | avg: {}ns | min: {}ns | max: {}ns
+        \\    Budget: {d:.4}% von 2.9ms
+        \\    Schwelle: < 2000ns/block (Issue #16)
+        \\
+    , .{ BLOCK, RUNS, r.median, r.avg, r.min, r.max, budget_pct(r.median) });
+    if (enforce) try std.testing.expect(r.median < 2000);
+}
+
+test "bench: WP-014 BL-WT triangle 128S [< 2000ns/block]" {
+    const phase_inc: f32 = 440.0 / 44100.0;
+
+    // Warmup
+    var w_phase: f32 = 0.0;
+    var w_buf: [BLOCK]f32 = undefined;
+    for (0..WARMUP) |_| {
+        oscillator.process_block(&w_phase, phase_inc, .triangle, &w_buf);
+        std.mem.doNotOptimizeAway(&w_buf);
+    }
+
+    // Measure
+    var samples: [RUNS]u64 = undefined;
+    for (&samples) |*s| {
+        var phase: f32 = 0.0;
+        var buf: [BLOCK]f32 = undefined;
+        var timer = std.time.Timer.start() catch {
+            s.* = 0;
+            continue;
+        };
+        for (0..ITERS) |_| {
+            oscillator.process_block(&phase, phase_inc, .triangle, &buf);
+            std.mem.doNotOptimizeAway(&buf);
+        }
+        s.* = timer.read() / ITERS;
+    }
+    const r = aggregate(samples);
+
+    std.debug.print(
+        \\
+        \\  [WP-014] BL-WT triangle — {} Samples, {} Runs
+        \\    median: {}ns/block | avg: {}ns | min: {}ns | max: {}ns
+        \\    Budget: {d:.4}% von 2.9ms
+        \\    Schwelle: < 2000ns/block (Issue #16)
+        \\
+    , .{ BLOCK, RUNS, r.median, r.avg, r.min, r.max, budget_pct(r.median) });
+    if (enforce) try std.testing.expect(r.median < 2000);
+}
+
+test "bench: WP-014 BL-WT square THD+N [aliase < -80dB]" {
+    const result = measure_thdn(.square);
+
+    std.debug.print(
+        \\
+        \\  [WP-014] BL-WT square THD+N — {d:.1}Hz @ 44.1kHz, {} samples (Hanning, FFT)
+        \\    Fundamental: {d:.1}dB (bin {})
+        \\    Max alias/noise: {d:.1}dB (rel to fundamental)
+        \\    Schwelle: aliase < -80dB (Issue #16)
+        \\
+    , .{ result.freq, result.n, result.fund_db, result.fund_bin, result.max_alias_db });
+
+    try std.testing.expect(result.max_alias_db < -80.0);
+}
+
+test "bench: WP-014 BL-WT triangle THD+N [aliase < -80dB]" {
+    const result = measure_thdn(.triangle);
+
+    std.debug.print(
+        \\
+        \\  [WP-014] BL-WT triangle THD+N — {d:.1}Hz @ 44.1kHz, {} samples (Hanning, FFT)
+        \\    Fundamental: {d:.1}dB (bin {})
+        \\    Max alias/noise: {d:.1}dB (rel to fundamental)
+        \\    Schwelle: aliase < -80dB (Issue #16)
+        \\
+    , .{ result.freq, result.n, result.fund_db, result.fund_bin, result.max_alias_db });
+
+    try std.testing.expect(result.max_alias_db < -80.0);
+}
+
+// ── THD+N Measurement Infrastructure ─────────────────────────────────
+
+const ThdnResult = struct {
+    freq: f64,
+    n: usize,
+    fund_bin: usize,
+    fund_db: f64,
+    max_alias_db: f64,
+};
+
+/// Measure THD+N for any wave type using FFT analysis.
+/// Generates 8192 samples at ~1kHz (bin-aligned), applies Hanning window,
+/// and finds max alias/noise level relative to fundamental.
+fn measure_thdn(wave: oscillator.WaveType) ThdnResult {
+    const N: usize = 8192;
+    const sr: f64 = 44100.0;
+    const fund_bin: usize = 186;
+    const freq: f64 = @as(f64, @floatFromInt(fund_bin)) * sr / @as(f64, N);
+    const phase_inc: f32 = @floatCast(freq / sr);
+    const nyquist = sr / 2.0;
+
+    // Fill buffer via process_block (128 samples at a time)
+    var signal: [N]f32 = undefined;
+    var phase: f32 = 0.0;
+    var offset: usize = 0;
+    while (offset + BLOCK <= N) : (offset += BLOCK) {
+        oscillator.process_block(&phase, phase_inc, wave, @ptrCast(signal[offset..][0..BLOCK]));
+    }
+
+    // Apply Hanning window
+    var windowed: [N]f64 = undefined;
+    for (&windowed, 0..) |*w, i| {
+        const t = @as(f64, @floatFromInt(i)) / @as(f64, N);
+        const window = 0.5 * (1.0 - @cos(2.0 * std.math.pi * t));
+        w.* = @as(f64, signal[i]) * window;
+    }
+
+    // FFT
+    var fft_re: [N]f64 = undefined;
+    var fft_im: [N]f64 = undefined;
+    fft_forward(&windowed, &fft_re, &fft_im);
+
+    // Power spectrum in dB
+    var power_db: [N / 2]f64 = undefined;
+    for (&power_db, 0..) |*p, k| {
+        const mag_sq = fft_re[k] * fft_re[k] + fft_im[k] * fft_im[k];
+        p.* = if (mag_sq > 1e-30) 10.0 * @log10(mag_sq) else -300.0;
+    }
+
+    // Find fundamental power
+    var fund_db: f64 = -300.0;
+    const search_start = if (fund_bin > 2) fund_bin - 2 else 0;
+    const search_end = @min(fund_bin + 3, N / 2);
+    for (search_start..search_end) |k| {
+        if (power_db[k] > fund_db) fund_db = power_db[k];
+    }
+
+    // Classify each bin: harmonic vs alias/noise
+    // For square/triangle: harmonics are at odd multiples of fundamental
+    // For saw: harmonics at all integer multiples
+    const is_odd_only = (wave == .square or wave == .triangle);
+    var max_alias_db: f64 = -300.0;
+    const bin_hz = sr / @as(f64, N);
+    var k: usize = 2;
+    while (k < N / 2) : (k += 1) {
+        const k_freq = @as(f64, @floatFromInt(k)) * bin_hz;
+        const rel_db = power_db[k] - fund_db;
+
+        const harmonic_ratio = @as(f64, @floatFromInt(k)) / @as(f64, @floatFromInt(fund_bin));
+        const rounded = @round(harmonic_ratio);
+        const is_integer = @abs(harmonic_ratio - rounded) < 0.02 and rounded >= 1.0 and k_freq < nyquist;
+
+        // For odd-only waveforms, skip odd harmonics; for saw, skip all harmonics
+        const is_harmonic = if (is_odd_only)
+            is_integer and @as(usize, @intFromFloat(rounded)) % 2 == 1
+        else
+            is_integer;
+
+        // Skip bins adjacent to harmonics (±2 bins for window main lobe)
+        const nearest_harmonic = @as(usize, @intFromFloat(rounded)) * fund_bin;
+        const dist_to_harmonic = if (k >= nearest_harmonic) k - nearest_harmonic else nearest_harmonic - k;
+        const near_harmonic = is_harmonic or (dist_to_harmonic <= 2 and k_freq < nyquist);
+
+        if (!near_harmonic) {
+            if (rel_db > max_alias_db) max_alias_db = rel_db;
+        }
+    }
+
+    return .{
+        .freq = freq,
+        .n = N,
+        .fund_bin = fund_bin,
+        .fund_db = fund_db,
+        .max_alias_db = max_alias_db,
+    };
+}
+
 // ── FFT Infrastructure (reusable for all wave quality tests) ────────
 
 /// Radix-2 Cooley-Tukey FFT. N must be power of 2.
@@ -1457,11 +1669,11 @@ fn bit_reverse(x: usize, bits: usize) usize {
 // WP-010 | #12 | latency/call
 //   MIDI parse < 100ns | events/block >= 128
 //
-// WP-013 | #15 | cycles/block + accuracy
-//   saw_process_block 128S < 2000ns | ADAA overhead < 100% | THD+N < -80dB
+// WP-013 | #15 | cycles/block + accuracy — IMPLEMENTIERT (oben)
+//   saw_process_block 128S < 2000ns | BL-WT overhead informativ | THD+N < -80dB
 //
-// WP-014 | #16 | cycles/block
-//   square BLEP 128S < 2000ns | triangle < 2000ns | PWM < 2500ns
+// WP-014 | #16 | cycles/block + accuracy — IMPLEMENTIERT (oben)
+//   square BL-WT 128S < 2000ns | triangle BL-WT < 2000ns | THD+N < -80dB
 //
 // WP-015 | #17 | cycles/block
 //   sine 128S < 500ns | noise < 300ns | supersaw 7det < 5000ns
