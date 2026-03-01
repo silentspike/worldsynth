@@ -24,7 +24,8 @@ pub inline fn adaa_lookup(x: f32) f32 {
     const idx_f = normalized * @as(f32, ADAA_TABLE_SIZE - 1);
     const idx: usize = @min(@as(usize, @intFromFloat(idx_f)), ADAA_TABLE_SIZE - 2);
     const frac = idx_f - @as(f32, @floatFromInt(idx));
-    return ADAA_SAW_ANTI[idx] + frac * (ADAA_SAW_ANTI[idx + 1] - ADAA_SAW_ANTI[idx]);
+    // FMA: val + frac * (next - val) = val + frac * delta
+    return @mulAdd(f32, frac, ADAA_SAW_ANTI[idx + 1] - ADAA_SAW_ANTI[idx], ADAA_SAW_ANTI[idx]);
 }
 
 /// ADAA saw evaluation: (F(x2) - F(x1)) / (x2 - x1) with division-by-zero guard.
