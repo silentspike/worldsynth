@@ -52,8 +52,7 @@ pub const DriftState = struct {
         const unit = @as(f32, @bitCast(bits)) - 1.5;
 
         // Random walk: accumulate step, branchless clamp (minss/maxss)
-        self.value = @min(@as(f32, 1.0), @max(@as(f32, -1.0),
-            self.value + unit * (2.0 * walk_step)));
+        self.value = @min(@as(f32, 1.0), @max(@as(f32, -1.0), self.value + unit * (2.0 * walk_step)));
     }
 };
 
