@@ -19,6 +19,7 @@ pub const dsp = struct {
 
 pub const io = struct {
     pub const osc = @import("io/osc.zig");
+    pub const midi_learn = @import("io/midi_learn.zig");
 };
 
 pub fn main() void {
@@ -38,4 +39,5 @@ test {
     _ = dsp.voice;
     _ = dsp.drift;
     _ = io.osc;
+    _ = io.midi_learn;
 }
