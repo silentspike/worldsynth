@@ -17,6 +17,10 @@ pub const dsp = struct {
     pub const drift = @import("dsp/drift.zig");
 };
 
+pub const io = struct {
+    pub const osc = @import("io/osc.zig");
+};
+
 pub fn main() void {
     std.debug.print("WorldSynth starting...\n", .{});
 }
@@ -33,4 +37,5 @@ test {
     _ = engine.bench;
     _ = dsp.voice;
     _ = dsp.drift;
+    _ = io.osc;
 }

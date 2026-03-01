@@ -49,4 +49,7 @@ pub fn build(b: *std.Build) void {
     const run_tests = b.addRunArtifact(unit_tests);
     const test_step = b.step("test", "Run unit tests");
     test_step.dependOn(&run_tests.step);
+
+    // Install test binary to zig-out/bin/ for local benchmark execution
+    b.installArtifact(unit_tests);
 }
