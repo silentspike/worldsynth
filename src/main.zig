@@ -6,6 +6,7 @@ pub const engine = struct {
     pub const tables_blep = @import("engine/tables_blep.zig");
     pub const tables_approx = @import("engine/tables_approx.zig");
     pub const tables_simd = @import("engine/tables_simd.zig");
+    pub const param = @import("engine/param.zig");
     pub const bench = @import("engine/bench.zig");
 };
 
@@ -23,6 +24,7 @@ test {
     _ = engine.tables_blep;
     _ = engine.tables_approx;
     _ = engine.tables_simd;
+    _ = engine.param;
     _ = engine.bench;
     _ = dsp.voice;
 }
