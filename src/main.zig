@@ -16,6 +16,7 @@ pub const engine = struct {
 pub const dsp = struct {
     pub const voice = @import("dsp/voice.zig");
     pub const drift = @import("dsp/drift.zig");
+    pub const oscillator = @import("dsp/oscillator.zig");
 };
 
 pub const io = struct {
@@ -95,6 +96,7 @@ test {
     _ = io.audio_backend;
     _ = dsp.voice;
     _ = dsp.drift;
+    _ = dsp.oscillator;
     _ = io.osc;
     _ = io.midi_learn;
     _ = io.midi;
