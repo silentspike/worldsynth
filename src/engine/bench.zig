@@ -37,6 +37,7 @@ const voice = @import("../dsp/voice.zig");
 const param = @import("param.zig");
 const param_smooth = @import("param_smooth.zig");
 const oscillator = @import("../dsp/oscillator.zig");
+const filter = @import("../dsp/filter.zig");
 
 // ── Configuration ───────────────────────────────────────────────────
 
@@ -1633,6 +1634,173 @@ test "bench: WP-015 supersaw 7x BL-WT [< 5000ns/block]" {
         \\
     , .{ BLOCK, RUNS, r.median, r.avg, r.min, r.max, budget_pct(r.median) });
     if (enforce) try std.testing.expect(r.median < 5000);
+}
+
+// ── WP-016: SVF Filter ZDF f64 ───────────────────────────────────────
+// Issue: #18 | Typ: cycles/block
+// Schwellwerte (aus Issue):
+//   SVF LP 128S < 1500ns | alle Modi < 2x Unterschied | f64 overhead < 30%
+
+test "bench: WP-016 SVF LP 128S [< 1500ns/block]" {
+    const coeffs = filter.make_coeffs(1000.0, 0.5, 44100.0);
+
+    // Generate saw input
+    var input: [BLOCK]f32 = undefined;
+    var ph: f32 = 0.0;
+    for (&input) |*s| {
+        s.* = 2.0 * ph - 1.0;
+        ph += 440.0 / 44100.0;
+        if (ph >= 1.0) ph -= 1.0;
+    }
+
+    // Warmup
+    var w_z1: f64 = 0;
+    var w_z2: f64 = 0;
+    var w_out: [BLOCK]f32 = undefined;
+    for (0..WARMUP) |_| {
+        filter.process_block(&input, &w_out, &w_z1, &w_z2, coeffs, .lp);
+        std.mem.doNotOptimizeAway(&w_out);
+    }
+
+    // Measure
+    var samples: [RUNS]u64 = undefined;
+    for (&samples) |*s| {
+        var z1: f64 = 0;
+        var z2: f64 = 0;
+        var out: [BLOCK]f32 = undefined;
+        var timer = std.time.Timer.start() catch {
+            s.* = 0;
+            continue;
+        };
+        for (0..ITERS) |_| {
+            filter.process_block(&input, &out, &z1, &z2, coeffs, .lp);
+            std.mem.doNotOptimizeAway(&out);
+        }
+        s.* = timer.read() / ITERS;
+    }
+    const r = aggregate(samples);
+
+    std.debug.print(
+        \\
+        \\  [WP-016] SVF LP f64 — {} Samples, {} Runs
+        \\    median: {}ns/block | avg: {}ns | min: {}ns | max: {}ns
+        \\    Budget: {d:.4}% von 2.9ms
+        \\    Schwelle: < 1500ns/block (Issue #18)
+        \\
+    , .{ BLOCK, RUNS, r.median, r.avg, r.min, r.max, budget_pct(r.median) });
+    if (enforce) try std.testing.expect(r.median < 1500);
+}
+
+test "bench: WP-016 SVF all modes (Tuning)" {
+    const coeffs = filter.make_coeffs(1000.0, 0.5, 44100.0);
+    const modes = [_]filter.Mode{ .lp, .hp, .bp, .notch, .peak, .shelf, .allpass };
+    const mode_names = [_][]const u8{ "LP", "HP", "BP", "Notch", "Peak", "Shelf", "Allpass" };
+
+    var input: [BLOCK]f32 = undefined;
+    var ph: f32 = 0.0;
+    for (&input) |*s| {
+        s.* = 2.0 * ph - 1.0;
+        ph += 440.0 / 44100.0;
+        if (ph >= 1.0) ph -= 1.0;
+    }
+
+    std.debug.print(
+        \\
+        \\  [WP-016] SVF all modes — {} Runs
+        \\    | Mode    | ns/block | Budget%  |
+        \\    |---------|----------|----------|
+    , .{RUNS});
+
+    for (modes, mode_names) |mode, name| {
+        var mode_samples: [RUNS]u64 = undefined;
+        for (&mode_samples) |*s| {
+            var z1: f64 = 0;
+            var z2: f64 = 0;
+            var out: [BLOCK]f32 = undefined;
+            for (0..WARMUP) |_| {
+                filter.process_block(&input, &out, &z1, &z2, coeffs, mode);
+                std.mem.doNotOptimizeAway(&out);
+            }
+            z1 = 0;
+            z2 = 0;
+            var timer = std.time.Timer.start() catch {
+                s.* = 0;
+                continue;
+            };
+            for (0..ITERS) |_| {
+                filter.process_block(&input, &out, &z1, &z2, coeffs, mode);
+                std.mem.doNotOptimizeAway(&out);
+            }
+            s.* = timer.read() / ITERS;
+        }
+        const r = aggregate(mode_samples);
+        std.debug.print(
+            "    | {s: <7} | {d:>8} | {d:>6.4}% |\n",
+            .{ name, r.median, budget_pct(r.median) },
+        );
+    }
+    std.debug.print("\n", .{});
+}
+
+test "bench: WP-016 SVF cascade 1/2/4/8 stages (Tuning)" {
+    const coeffs = filter.make_coeffs(1000.0, 0.5, 44100.0);
+    const stage_counts = [_]usize{ 1, 2, 4, 8 };
+
+    var input: [BLOCK]f32 = undefined;
+    var ph: f32 = 0.0;
+    for (&input) |*s| {
+        s.* = 2.0 * ph - 1.0;
+        ph += 440.0 / 44100.0;
+        if (ph >= 1.0) ph -= 1.0;
+    }
+
+    std.debug.print(
+        \\
+        \\  [WP-016] SVF cascade scaling — {} Runs
+        \\    | Stages | dB/oct | ns/block | ns/stage | Budget%  |
+        \\    |--------|--------|----------|----------|----------|
+    , .{RUNS});
+
+    for (stage_counts) |ns| {
+        var casc_samples: [RUNS]u64 = undefined;
+        for (&casc_samples) |*s| {
+            var z1s: [8]f64 = .{0} ** 8;
+            var z2s: [8]f64 = .{0} ** 8;
+            var buf_a: [BLOCK]f32 = undefined;
+            var buf_b: [BLOCK]f32 = undefined;
+            // Warmup
+            for (0..WARMUP) |_| {
+                @memcpy(&buf_a, &input);
+                for (0..ns) |stage| {
+                    filter.process_block(&buf_a, &buf_b, &z1s[stage], &z2s[stage], coeffs, .lp);
+                    @memcpy(&buf_a, &buf_b);
+                }
+                std.mem.doNotOptimizeAway(&buf_a);
+            }
+            for (&z1s) |*z| z.* = 0;
+            for (&z2s) |*z| z.* = 0;
+            var timer = std.time.Timer.start() catch {
+                s.* = 0;
+                continue;
+            };
+            for (0..ITERS) |_| {
+                @memcpy(&buf_a, &input);
+                for (0..ns) |stage| {
+                    filter.process_block(&buf_a, &buf_b, &z1s[stage], &z2s[stage], coeffs, .lp);
+                    @memcpy(&buf_a, &buf_b);
+                }
+                std.mem.doNotOptimizeAway(&buf_a);
+            }
+            s.* = timer.read() / ITERS;
+        }
+        const r = aggregate(casc_samples);
+        const ns_per_stage = r.median / ns;
+        std.debug.print(
+            "    | {d:>6} | {d:>4}dB | {d:>8} | {d:>8} | {d:>6.4}% |\n",
+            .{ ns, ns * 6, r.median, ns_per_stage, budget_pct(r.median) },
+        );
+    }
+    std.debug.print("\n", .{});
 }
 
 // ── THD+N Measurement Infrastructure ─────────────────────────────────
