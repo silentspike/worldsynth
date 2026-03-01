@@ -1,7 +1,7 @@
 # CLAUDE CODE - WorldSynth Sprint 1: Foundation
 
 **Sprache:** Deutsch
-**Typ:** DSP Foundation (Zig 0.14.x)
+**Typ:** DSP Foundation (Zig 0.15.x)
 
 ---
 
@@ -28,7 +28,7 @@
 - @Vector SIMD fuer Block-Processing (128 Samples)
 - comptime fuer LUTs und Lookup-Tabellen
 - Error Unions (`!T`) statt @panic
-- `zig build` + `zig build test` vor jedem Commit
+- `zig-remote build` + `zig-remote "build test"` vor jedem Commit (NIEMALS lokales `zig build`!)
 - Nach WP-Abschluss: AC-Ergebnisse (pass/fail + Command + Output) direkt in den Issue Body schreiben (`gh issue edit`)
 - Evidence Protocol: Jeder Claim braucht Command + Output
 
@@ -89,7 +89,7 @@ feat/wp-XXX-name  (Feature-Branch, von private/main erstellt)
 1. **Issue lesen:** `gh issue view N -R silentspike/worldsynth-dev`
 2. **Dependencies pruefen:** Alle `blocked by #N` Issues muessen CLOSED sein
 3. **Implementieren:** Gemaess Issue-Spezifikation
-4. **Verifizieren:** `zig build && zig build test`
+4. **Verifizieren:** `zig-remote build && zig-remote "build test"`
 5. **Committen:** `feat(scope): description (WP-XXX)`
 6. **PR erstellen:** `gh pr create -R silentspike/worldsynth-dev --base main`
 7. **Nach Merge:** sprint-1 mit main synchronisieren (siehe Git-Workflow)
@@ -98,9 +98,11 @@ feat/wp-XXX-name  (Feature-Branch, von private/main erstellt)
 ## PROJECT CONTEXT
 
 ### Quick Start
-- **Build:** `zig build`
-- **Test:** `zig build test`
-- **Full Verify:** `zig build && zig build test`
+- **Build:** `zig-remote build`
+- **Test:** `zig-remote "build test"`
+- **Build + JACK:** `zig-remote "build -Djack=true"`
+- **ReleaseFast Tests:** `zig-remote "build test -Doptimize=ReleaseFast"`
+- **Full Verify:** `zig-remote build && zig-remote "build test"`
 - **Issue lesen:** `gh issue view N -R silentspike/worldsynth-dev`
 
 ### Scope
@@ -145,8 +147,77 @@ Du bist Teil eines 5-koepfigen Entwicklungsteams. Alle Instanzen sind Claude Cod
 - **Error Handling:** Error Unions (`!T`), NIEMALS `@panic` in Production, Fehler propagieren statt verschlucken
 - **Logging:** Structured Logging, Lock-free im Audio-Thread (SPSC Ring Buffer), sinnvolle Log-Levels
 - **Git-Workflow:** Feature-Branch pro WP, PR gegen `main`, nach Merge sprint-1 synchronisieren
-- **Testing:** Unit-Tests fuer jede neue Funktion, `zig build test` IMMER vor Commit
+- **Testing:** Unit-Tests fuer jede neue Funktion, `zig-remote "build test"` IMMER vor Commit
 - **Code-Qualitaet:** Keine TODO/FIXME ohne zugehoeriges GitHub Issue, kein Dead Code, kein Copy-Paste
+
+## ZIG REMOTE BUILD
+
+**Build-Server:** LXC `zigbuild` (CT 183) auf Proxmox 10.0.0.69
+**Adresse:** `builder@10.0.0.73`
+**Specs:** 4 Cores (P-Cores, 4.4 GHz), 4GB RAM, 10GB Disk, Debian 13, Zig 0.15.2
+**tmpfs:** 2GB auf `/opt/zig-builds` (Build-Artefakte im RAM)
+
+### Regeln
+- **IMMER** `zig-remote` statt `zig build` fuer WorldSynth und andere Zig-Projekte unter /work
+- Entlastet den Laptop, Build laeuft auf Proxmox-Server
+- Config `.zig-remote.toml` liegt im Projekt-Root (neben build.zig)
+
+### Verwendung
+```bash
+# Statt: zig build
+zig-remote build
+
+# Tests remote
+zig-remote "build test"
+
+# ReleaseFast Tests
+zig-remote "build test -Doptimize=ReleaseFast"
+
+# Mit JACK-Flag
+zig-remote "build -Djack=true"
+```
+
+### Neue Zig-Projekte einrichten
+`.zig-remote.toml` im Projekt-Root (neben build.zig) anlegen:
+```toml
+[remote]
+host = "zigbuild"
+temp_dir = "/opt/zig-builds"
+```
+
+### Benchmarks und Tests: Remote + Lokal
+
+**WICHTIG:** `zig-remote "build test"` kompiliert UND fuehrt Tests auf dem Build-Server aus!
+Die Benchmarks laufen also auf dem Build-Server (Intel i5-1235U P-Cores), NICHT auf dem Laptop (Ryzen 9 5900HS).
+
+**Konsequenzen:**
+- Build-Server hat andere CPU → andere Benchmark-Werte als lokal
+- Build-Server ist stabiler (kein Desktop, kein Browser) → weniger Varianz, reproduzierbarere Ergebnisse
+- Laptop ist das echte Ziel-System → lokale Werte sind relevanter fuer Praxis
+
+**CPU-Target Problem:**
+- Build-Server (Intel Alder Lake) baut mit `-march=native` → Binary enthaelt Instruktionen die Ryzen 9 5900HS (Zen 3) NICHT hat → `Illegal instruction` lokal!
+- Remote-Binaries NIEMALS lokal ausfuehren!
+- Fuer lokale Integration-Tests (JACK, PipeWire): `zig build` lokal ist erlaubt (Ausnahme!)
+
+**Strategie: IMMER doppelt testen!**
+1. `zig-remote "build test"` — Remote: Unit-Tests + Benchmarks auf Build-Server
+2. `zig build -Djack=true && ./zig-out/bin/worldsynth` — Lokal: Integration mit JACK/PipeWire
+
+**Ausnahme von "immer zig-remote":** Integration-Tests die lokale Services brauchen (JACK/PipeWire/Audio-Hardware) werden lokal gebaut und getestet mit `zig build`.
+
+**Binaries verwenden:** Fuer Benchmarks und alle Tests IMMER die kompilierten Binaries aus `zig-out/` verwenden. Das stellt sicher dass das tatsaechliche Artefakt getestet wird.
+
+**Schwellwerte:** Muessen fuer BEIDE Umgebungen passen. Bei neuen Benchmarks:
+1. Auf Build-Server messen (Remote-Baseline)
+2. Auf Laptop messen (Lokal-Baseline, x86_64_v3 Binary)
+3. Schwellwert = max(beide) * 2x Headroom
+
+### Troubleshooting
+- Build-Server nicht erreichbar? Proxmox pruefen: `ssh root@10.0.0.69 "pct status 183"`
+- Container starten: `ssh root@10.0.0.69 "pct start 183"`
+- Zig-Version pruefen: `ssh zigbuild "zig version"`
+- tmpfs voll? Build-Cache leeren: `ssh zigbuild "rm -rf /opt/zig-builds/*"`
 
 ## REFERENCES
 

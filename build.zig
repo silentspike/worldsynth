@@ -22,6 +22,14 @@ pub fn build(b: *std.Build) void {
     });
     root_mod.addOptions("build_options", options);
 
+    // ── Optional System Libraries ──────────────────────────────────
+    // JACK/PipeWire shared libraries need libc (pthreads, TLS init).
+    // Without libc, Zig skips glibc startup → segfault in JACK init.
+    if (enable_jack) {
+        root_mod.link_libc = true;
+        root_mod.linkSystemLibrary("jack", .{});
+    }
+
     // ── Target 1: Standalone executable ────────────────────────────
     const exe = b.addExecutable(.{
         .name = "worldsynth",
@@ -46,6 +54,10 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
     test_mod.addOptions("build_options", options);
+
+    if (enable_jack) {
+        test_mod.linkSystemLibrary("jack", .{});
+    }
 
     const unit_tests = b.addTest(.{
         .root_module = test_mod,
