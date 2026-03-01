@@ -25,7 +25,7 @@ pub fn main() void {
     std.debug.print("WorldSynth starting...\n", .{});
 
     if (comptime build_options.enable_jack) {
-        var jack = io.jack.JackAudioClient.init(null) catch |err| {
+        var jack = io.jack.JackAudioClient.init(null, null) catch |err| {
             std.debug.print("JACK init failed: {}\n", .{err});
             return;
         };
