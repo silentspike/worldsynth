@@ -7,6 +7,7 @@ pub const engine = struct {
     pub const tables_approx = @import("engine/tables_approx.zig");
     pub const tables_simd = @import("engine/tables_simd.zig");
     pub const param = @import("engine/param.zig");
+    pub const param_smooth = @import("engine/param_smooth.zig");
     pub const undo = @import("engine/undo.zig");
     pub const microtuning = @import("engine/microtuning.zig");
     pub const bench = @import("engine/bench.zig");
@@ -18,13 +19,33 @@ pub const dsp = struct {
 };
 
 pub const io = struct {
+    pub const jack = @import("io/jack.zig");
     pub const osc = @import("io/osc.zig");
     pub const midi_learn = @import("io/midi_learn.zig");
     pub const midi = @import("io/midi.zig");
 };
 
+const build_options = @import("build_options");
+
 pub fn main() void {
     std.debug.print("WorldSynth starting...\n", .{});
+
+    if (comptime build_options.enable_jack) {
+        var jack = io.jack.JackAudioClient.init(null, null) catch |err| {
+            std.debug.print("JACK init failed: {}\n", .{err});
+            return;
+        };
+        jack.start() catch |err| {
+            std.debug.print("JACK start failed: {}\n", .{err});
+            jack.deinit();
+            return;
+        };
+        std.debug.print("JACK client active. Press Ctrl+C to quit.\n", .{});
+        // Block until signal
+        while (true) {
+            std.Thread.sleep(100 * std.time.ns_per_ms);
+        }
+    }
 }
 
 test {
@@ -34,9 +55,11 @@ test {
     _ = engine.tables_approx;
     _ = engine.tables_simd;
     _ = engine.param;
+    _ = engine.param_smooth;
     _ = engine.undo;
     _ = engine.microtuning;
     _ = engine.bench;
+    _ = io.jack;
     _ = dsp.voice;
     _ = dsp.drift;
     _ = io.osc;

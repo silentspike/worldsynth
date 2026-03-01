@@ -14,16 +14,27 @@ pub fn build(b: *std.Build) void {
     options.addOption(bool, "enable_pipewire", enable_pipewire);
     options.addOption(bool, "enable_jack", enable_jack);
 
+    // ── Root Module ──────────────────────────────────────────────
+    const root_mod = b.createModule(.{
+        .root_source_file = b.path("src/main.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    root_mod.addOptions("build_options", options);
+
+    // ── Optional System Libraries ──────────────────────────────────
+    // JACK/PipeWire shared libraries need libc (pthreads, TLS init).
+    // Without libc, Zig skips glibc startup → segfault in JACK init.
+    if (enable_jack) {
+        root_mod.link_libc = true;
+        root_mod.linkSystemLibrary("jack", .{});
+    }
+
     // ── Target 1: Standalone executable ────────────────────────────
     const exe = b.addExecutable(.{
         .name = "worldsynth",
-        .root_module = b.createModule(.{
-            .root_source_file = b.path("src/main.zig"),
-            .target = target,
-            .optimize = optimize,
-        }),
+        .root_module = root_mod,
     });
-    exe.root_module.addOptions("build_options", options);
     b.installArtifact(exe);
 
     // ── Target 2: CLAP plugin (shared library) ─────────────────────
@@ -37,14 +48,20 @@ pub fn build(b: *std.Build) void {
     _ = bench_step;
 
     // ── Tests ──────────────────────────────────────────────────────
-    const unit_tests = b.addTest(.{
-        .root_module = b.createModule(.{
-            .root_source_file = b.path("src/main.zig"),
-            .target = target,
-            .optimize = optimize,
-        }),
+    const test_mod = b.createModule(.{
+        .root_source_file = b.path("src/main.zig"),
+        .target = target,
+        .optimize = optimize,
     });
-    unit_tests.root_module.addOptions("build_options", options);
+    test_mod.addOptions("build_options", options);
+
+    if (enable_jack) {
+        test_mod.linkSystemLibrary("jack", .{});
+    }
+
+    const unit_tests = b.addTest(.{
+        .root_module = test_mod,
+    });
 
     const run_tests = b.addRunArtifact(unit_tests);
     const test_step = b.step("test", "Run unit tests");
