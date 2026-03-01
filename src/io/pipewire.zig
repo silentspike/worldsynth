@@ -317,6 +317,52 @@ pub const PipeWireClient = struct {
     // Format pod — must live until stream is connected
     format_pod: AudioFormatPod,
 
+    /// Check if PipeWire daemon is reachable by probing stream connect.
+    /// Initializes and deinitializes PipeWire — call before init().
+    pub fn probe() bool {
+        pw_init(null, null);
+        const loop = pw_main_loop_new(null) orelse {
+            pw_deinit();
+            return false;
+        };
+        const props = pw_properties_new(
+            PW_KEY_NODE_NAME,
+            "probe",
+            @as(?[*:0]const u8, null),
+        ) orelse {
+            pw_main_loop_destroy(loop);
+            pw_deinit();
+            return false;
+        };
+        var events = pw_stream_events{ .version = PW_VERSION_STREAM_EVENTS };
+        const stream = pw_stream_new_simple(
+            pw_main_loop_get_loop(loop),
+            "probe",
+            props,
+            &events,
+            null,
+        ) orelse {
+            pw_main_loop_destroy(loop);
+            pw_deinit();
+            return false;
+        };
+        var pod = AudioFormatPod.build(44100);
+        const params = [_]*const spa_pod{@ptrCast(&pod)};
+        const ok = pw_stream_connect(
+            stream,
+            .OUTPUT,
+            PW_ID_ANY,
+            PW_STREAM_FLAG_AUTOCONNECT | PW_STREAM_FLAG_MAP_BUFFERS,
+            &params,
+            1,
+        ) >= 0;
+        _ = pw_stream_disconnect(stream);
+        pw_stream_destroy(stream);
+        pw_main_loop_destroy(loop);
+        pw_deinit();
+        return ok;
+    }
+
     /// Initialize PipeWire and create main loop.
     /// Stream is created lazily in start() to ensure stable self pointer.
     pub fn init(process_fn: ?ProcessFn) !PipeWireClient {
