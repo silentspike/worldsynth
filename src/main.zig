@@ -14,6 +14,7 @@ pub const engine = struct {
 
 pub const dsp = struct {
     pub const voice = @import("dsp/voice.zig");
+    pub const drift = @import("dsp/drift.zig");
 };
 
 pub fn main() void {
@@ -31,4 +32,5 @@ test {
     _ = engine.microtuning;
     _ = engine.bench;
     _ = dsp.voice;
+    _ = dsp.drift;
 }
