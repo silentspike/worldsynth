@@ -8,6 +8,7 @@ pub const engine = struct {
     pub const tables_simd = @import("engine/tables_simd.zig");
     pub const param = @import("engine/param.zig");
     pub const undo = @import("engine/undo.zig");
+    pub const microtuning = @import("engine/microtuning.zig");
     pub const bench = @import("engine/bench.zig");
 };
 
@@ -27,6 +28,7 @@ test {
     _ = engine.tables_simd;
     _ = engine.param;
     _ = engine.undo;
+    _ = engine.microtuning;
     _ = engine.bench;
     _ = dsp.voice;
 }
