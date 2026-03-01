@@ -11,12 +11,35 @@ pub const engine = struct {
     pub const bench = @import("engine/bench.zig");
 };
 
+pub const io = struct {
+    pub const jack = @import("io/jack.zig");
+};
+
 pub const dsp = struct {
     pub const voice = @import("dsp/voice.zig");
 };
 
+const build_options = @import("build_options");
+
 pub fn main() void {
     std.debug.print("WorldSynth starting...\n", .{});
+
+    if (comptime build_options.enable_jack) {
+        var jack = io.jack.JackAudioClient.init(null) catch |err| {
+            std.debug.print("JACK init failed: {}\n", .{err});
+            return;
+        };
+        jack.start() catch |err| {
+            std.debug.print("JACK start failed: {}\n", .{err});
+            jack.deinit();
+            return;
+        };
+        std.debug.print("JACK client active. Press Ctrl+C to quit.\n", .{});
+        // Block until signal
+        while (true) {
+            std.Thread.sleep(100 * std.time.ns_per_ms);
+        }
+    }
 }
 
 test {
@@ -28,5 +51,6 @@ test {
     _ = engine.param;
     _ = engine.param_smooth;
     _ = engine.bench;
+    _ = io.jack;
     _ = dsp.voice;
 }
