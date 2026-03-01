@@ -25,9 +25,14 @@ pub fn build(b: *std.Build) void {
     // ── Optional System Libraries ──────────────────────────────────
     // JACK/PipeWire shared libraries need libc (pthreads, TLS init).
     // Without libc, Zig skips glibc startup → segfault in JACK init.
-    if (enable_jack) {
+    if (enable_jack or enable_pipewire) {
         root_mod.link_libc = true;
+    }
+    if (enable_jack) {
         root_mod.linkSystemLibrary("jack", .{});
+    }
+    if (enable_pipewire) {
+        root_mod.linkSystemLibrary("pipewire-0.3", .{});
     }
 
     // ── Target 1: Standalone executable ────────────────────────────
@@ -55,8 +60,14 @@ pub fn build(b: *std.Build) void {
     });
     test_mod.addOptions("build_options", options);
 
+    if (enable_jack or enable_pipewire) {
+        test_mod.link_libc = true;
+    }
     if (enable_jack) {
         test_mod.linkSystemLibrary("jack", .{});
+    }
+    if (enable_pipewire) {
+        test_mod.linkSystemLibrary("pipewire-0.3", .{});
     }
 
     const unit_tests = b.addTest(.{
