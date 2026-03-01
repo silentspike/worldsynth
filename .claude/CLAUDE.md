@@ -1,51 +1,80 @@
-# CLAUDE CODE - WorldSynth Sprint 1: Foundation
+CRITICAL: ALWAYS FOLLOW CLAUDE.md! ALWAYS FOLLOW ISSUE DESCRIPTION! ALWAYS FOLLOW USER INPUT! Kein Command = UNTESTED, nicht PASS. Kein Test = nicht VERIFIED. Uebersprungen = OFFEN, nicht DONE.
+
+# CLAUDE CODE - WorldSynth Sprint 4: Integration + Release
 
 **Sprache:** Deutsch
-**Typ:** DSP Foundation (Zig 0.15.x)
+**Typ:** Integration + Release Engineering (Zig 0.15.x + CI/CD)
 
 ---
 
 ## CRITICAL RULES
 
 ### NIEMALS
-- Heap allocate im Audio-Thread (kein allocator.alloc, kein ArrayList.append im RT-Pfad)
-- @cImport verwenden (hand-written Bindings fuer CLAP, ALSA, JACK)
-- f64 ausserhalb ZDF-Filter-Integratoren und langsamer LFOs
-- Blocking Calls im Audio-Thread (kein mutex.lock, kein File I/O, kein Syscall)
-- Mutable State zwischen Threads teilen ohne MVCC/Atomic
-- Direkt auf main committen — immer Feature-Branch + PR
-- Ausserhalb deines Scopes (WP-000..031) arbeiten
+- Heap allocate im Audio-Thread
+- @cImport verwenden
+- f64 ausserhalb ZDF-Filter-Integratoren
+- Blocking Calls im Audio-Thread
+- Mutex/Alloc in log_rt() (Lock-free Logging!)
+- WP starten dessen Dependency-Issues noch OPEN sind
+- Direkt auf main committen
+- Ausserhalb deines Scopes (WP-123..142) arbeiten
 - @panic in Production Code Paths
 - Secrets committen (.env, *.key, *.pem)
 - "Production ready" behaupten ohne Evidence (Command + Output)
 - Issues schliessen ohne explizite User-Freigabe
 - Committen oder pushen ohne explizite User-Freigabe
+- "verified"/"complete" markieren wenn Tests/Benchmarks fehlschlagen oder uebersprungen wurden — uebersprungen = OFFEN
+- Reference Code aus dem Issue kopieren ohne den tatsaechlichen Code im Repo zu lesen und zu verstehen
+- Tests/Benchmarks ueberspringen — Blocker FIXEN statt umgehen
+- ACs als PASS markieren ohne den dazugehoerigen Command + Output — UNTESTED ist nicht PASS
+- Lokales `zig build` verwenden — IMMER `zig-remote` nutzen (Remote Build Server)
+
+### SPRACHE
+- **GitHub Issues:** Deutsch (Issue Body, Kommentare, Verify-Reports)
+- **ALLES ANDERE auf GitHub:** Englisch! (Commit Messages, PR Titles, PR Bodies, Branch Names, Code Comments, Doc Comments, CHANGELOG, README)
+- **Lokal:** Deutsch (Kommunikation mit User, CLAUDE.md)
 
 ### IMMER
 - GitHub Issue lesen BEVOR du mit einem WP startest (Dependencies, ACs, Steps)
 - Readiness Check: Dependency-Issues muessen CLOSED sein bevor du ein WP startest (`gh issue view N -R silentspike/worldsynth-dev --json state -q '.state'`)
-- Preallocated Buffers und Arenas fuer RT-Code
-- @Vector SIMD fuer Block-Processing (128 Samples)
-- comptime fuer LUTs und Lookup-Tabellen
+- Preallocated Buffers fuer RT-Code
 - Error Unions (`!T`) statt @panic
-- `zig-remote build` + `zig-remote "build test"` vor jedem Commit (NIEMALS lokales `zig build`!)
+- `zig-remote build` + `zig-remote "build test"` vor jedem Commit (IMMER remote!)
+- YAML-Syntax validieren fuer CI-Workflows
 - Nach WP-Abschluss: AC-Ergebnisse (pass/fail + Command + Output) direkt in den Issue Body schreiben (`gh issue edit`)
 - Evidence Protocol: Jeder Claim braucht Command + Output
+- Existierenden Code im Repo lesen BEVOR neuer Code geschrieben wird der darauf aufbaut (API-Signaturen verifizieren!)
+- Bei Evidence ehrlich dokumentieren was NICHT getestet wurde (NOT Tested Feld)
+- JEDE AC einzeln verifizieren — keine AC ueberspringen, keine AC ohne Command + Output als PASS melden
+
+## EVIDENCE TEMPLATE (Pflicht bei jedem Verify-Report!)
+
+Jeder Verify-Report MUSS pro AC dieses Format verwenden:
+```
+| Feld | Inhalt |
+|------|--------|
+| Command | Exakter Befehl der ausgefuehrt wurde |
+| Output | Tatsaechliche Ausgabe (gekuerzt wenn noetig) |
+| Scope | Was wurde getestet |
+| NOT Tested | Was wurde NICHT getestet (ehrlich!) |
+```
+**"NOT Tested" ist PFLICHT** — zwingt zur Ehrlichkeit ueber Testabdeckung.
+Fehlende Felder = Evidence unvollstaendig = AC bleibt UNTESTED.
 
 ## REQUIRED GUIDELINES
 
 ### Architecture Invariants
 - **f32**: Oszillatoren, Effekte, Mixing, Modulation, SIMD-Bloecke
-- **f64**: NUR ZDF-Filter-Integratoren (SVF, Ladder) + langsame LFOs
-- ZERO Heap im Audio-Thread — Preallocated Voice Pool (SoA/AoSoA Layout)
-- @Vector(f32, 4/8/16) je nach CPU-Feature (comptime)
+- **f64**: NUR ZDF-Filter-Integratoren + langsame LFOs
+- ZERO Heap im Audio-Thread — Preallocated Buffers
+- Lock-free Logging: SPSC Ring Buffer, KEIN Mutex in log_rt()
 
 ### Naming Conventions
 | Context | Convention | Example |
 |---------|-----------|---------|
-| Zig functions/variables | snake_case | `process_block`, `sample_rate` |
-| Zig types/structs | PascalCase | `VoicePool`, `FilterState` |
-| File names | snake_case.zig | `voice_pool.zig`, `svf_filter.zig` |
+| Zig functions/variables | snake_case | `async_read`, `log_rt` |
+| Zig types/structs | PascalCase | `IoUringContext`, `LogRingBuffer` |
+| File names | snake_case.zig | `io_uring.zig`, `logging.zig` |
 
 ### Commit Convention
 Format: `feat(scope): description (WP-XXX)`
@@ -53,89 +82,31 @@ Trailer: `Co-Authored-By: Claude <noreply@anthropic.com>`
 
 ## WORKFLOWS
 
-### Git-Workflow (LESSONS LEARNED — 2026-03-01)
-
-**Branch-Strategie:**
-```
-feat/wp-XXX-name  (Feature-Branch, von private/main erstellt)
-        ↓ PR gegen main
-      main  (Haupt-Branch, autoritativ)
-        ↓ sync nach jedem Merge!
-    sprint-1  (muss mit main synchron gehalten werden)
-```
-
-**Korrekter Ablauf pro WP:**
-1. Feature-Branch von `private/main` erstellen: `git checkout -b feat/wp-XXX-name private/main`
-2. Implementieren, testen, committen
-3. PR gegen `main` erstellen (NICHT gegen sprint-1)
-4. Nach PR-Merge: sprint-1 mit main synchronisieren:
-   ```bash
-   git checkout sprint-1 && git pull private sprint-1
-   git merge private/main --no-edit
-   git push private sprint-1
-   ```
-
-**FEHLER der gemacht wurde:** WP-003..007 wurden korrekt nach main gemergt, aber sprint-1 wurde NICHT synchronisiert. Dadurch hatten andere Sessions veralteten Code auf sprint-1.
-
-### Issue-Close Workflow (LESSONS LEARNED — 2026-03-01)
-
-**PFLICHT-Reihenfolge:**
-1. `status:verified` Label auf dem Issue setzen
-2. DANN Issue schliessen
-
-**FEHLER der gemacht wurde:** Issues #4-#9 ohne `status:verified` Label geschlossen. Die `issue-close-guard` GitHub Action hat sie automatisch ~8 Sekunden spaeter wieder geoeffnet.
-
 ### WP-Workflow
 1. **Issue lesen:** `gh issue view N -R silentspike/worldsynth-dev`
 2. **Dependencies pruefen:** Alle `blocked by #N` Issues muessen CLOSED sein
 3. **Implementieren:** Gemaess Issue-Spezifikation
 4. **Verifizieren:** `zig-remote build && zig-remote "build test"`
-5. **Committen:** `feat(scope): description (WP-XXX)`
-6. **PR erstellen:** `gh pr create -R silentspike/worldsynth-dev --base main`
-7. **Nach Merge:** sprint-1 mit main synchronisieren (siehe Git-Workflow)
-8. **Done:** Alle ACs mit Evidence verifizieren, `status:verified` Label setzen, Issue schliessen
+5. **CI-Workflows:** `python3 -c "import yaml; yaml.safe_load(open('.github/workflows/ci.yml'))"`
+6. **Committen:** `feat(scope): description (WP-XXX)`
+7. **Done:** Alle ACs mit Evidence verifizieren, Ergebnisse in den Issue Body schreiben (`gh issue edit N -R silentspike/worldsynth-dev`)
 
 ## PROJECT CONTEXT
 
 ### Quick Start
 - **Build:** `zig-remote build`
 - **Test:** `zig-remote "build test"`
-- **Build + JACK:** `zig-remote "build -Djack=true"`
-- **ReleaseFast Tests:** `zig-remote "build test -Doptimize=ReleaseFast"`
+- **ReleaseFast Test:** `zig-remote "build test -Doptimize=ReleaseFast"`
 - **Full Verify:** `zig-remote build && zig-remote "build test"`
+- **YAML Validate:** `python3 -c "import yaml; yaml.safe_load(open('.github/workflows/ci.yml'))"`
 - **Issue lesen:** `gh issue view N -R silentspike/worldsynth-dev`
 
 ### Scope
-Du bist **Dev 1** — verantwortlich fuer die DSP-Foundation und den ersten hoerbaren Sound.
-- **Branch:** `sprint-1`
-- **WPs:** WP-000 bis WP-031 (32 Work Packages)
-- **Worktree:** `/work/daw/synth/s1-foundation/`
-- **Issues:** `gh issue list -R silentspike/worldsynth-dev -l "sprint:s1" --limit 50`
-
-### Benchmark-Philosophie
-
-Benchmarks sind kein Pass/Fail-Gate — sie sind ein **Tuning-Werkzeug**. Ziel: Bottlenecks finden, Overhead reduzieren, alles optimieren. Jeder Benchmark misst was beim jeweiligen Issue an Code betroffen ist, damit wir Settings aendern, nochmal messen, und vorher/nachher vergleichen koennen.
-
-**Iterativer Optimierungs-Zyklus:**
-1. **Messen** — Benchmark laufen lassen, Baseline ermitteln
-2. **Analysieren** — Bottlenecks und Overhead identifizieren
-3. **Optimieren** — Settings aendern, Code optimieren
-4. **Vergleichen** — Benchmark nochmal laufen lassen, Vorher/Nachher vergleichen
-5. **Wiederholen** — bis Schwellwerte erreicht
-
-**Benchmark-Ausgabe muss enthalten:**
-- avg/min/max ueber mehrere Runs (statistisch aussagekraeftig)
-- Budget% (Anteil am 2.9ms Blockbudget bei 128S @ 44.1kHz)
-- Schwellwert + PASS/FAIL
-- Bei Varianten-Vergleichen: Delta% zwischen Varianten
-
-### Benchmark-Schwellwerte (LESSONS LEARNED — 2026-03-01)
-
-- Issue-Schwellwerte sind oft fuer Server-Hardware kalibriert, nicht fuer Laptop (Ryzen 9 5900HS)
-- LLVM optimiert `@sin(f32)` in ReleaseFast auf ~10-cycle Polynomial → LUT Speedup nur ~2.5x statt 5x
-- Bei Messwerten < 20ns dominiert Timer-Overhead → Speedup-Ratios instabil
-- Angepasste Schwellwerte: siehe PR #173
-- Bei neuen Benchmarks: realistischen Schwellwert auf Laptop messen, dann 2x Headroom einplanen
+Du bist **Dev 4** — verantwortlich fuer Advanced Features, Integration und Release Engineering.
+- **Branch:** `sprint-4`
+- **WPs:** WP-123 bis WP-142 (20 Work Packages)
+- **Worktree:** `/work/daw/synth/s4-integration/`
+- **Issues:** `gh issue list -R silentspike/worldsynth-dev -l "sprint:s4" --limit 30`
 
 ## TEAM
 
@@ -144,10 +115,10 @@ Du bist Teil eines 5-koepfigen Entwicklungsteams. Alle Instanzen sind Claude Cod
 ### Team-Mitglieder
 | Rolle | Agent | Worktree | Branch | Scope |
 |-------|-------|----------|--------|-------|
-| **Du** | Dev 1 (S1-Foundation) | `/work/daw/synth/s1-foundation/` | `sprint-1` | WP-000..031 |
+| Dev 1 | S1-Foundation | `/work/daw/synth/s1-foundation/` | `sprint-1` | WP-000..031 |
 | Dev 2 | S2-DSP-CLAP | `/work/daw/synth/s2-dsp-clap/` | `sprint-2` | WP-032..092 |
 | Dev 3 | S3-UI | `/work/daw/synth/s3-ui/` | `sprint-3` | WP-093..122 |
-| Dev 4 | S4-Integration | `/work/daw/synth/s4-integration/` | `sprint-4` | WP-123..142 |
+| **Du** | Dev 4 (S4-Integration) | `/work/daw/synth/s4-integration/` | `sprint-4` | WP-123..142 |
 | Lead | Orchestrator | `/work/daw/synth/` | `main` | Koordination |
 
 ### Kommunikation zwischen Agents
@@ -159,15 +130,61 @@ Du bist Teil eines 5-koepfigen Entwicklungsteams. Alle Instanzen sind Claude Cod
 
 ### Arbeitsweise (Team-Standards)
 - **Clean Code:** Selbsterklaerend, konsistente Naming Conventions (siehe oben), keine Magic Numbers
-- **Kommentare:** `//` fuer nicht-offensichtliche Logik, `///` fuer public API Docs (Zig doc-comments)
-- **Commits:** Atomar, ein logischer Change pro Commit, aussagekraeftige Messages (`feat(dsp): add ADAA saw oscillator (WP-012)`)
-- **Error Handling:** Error Unions (`!T`), NIEMALS `@panic` in Production, Fehler propagieren statt verschlucken
-- **Logging:** Structured Logging, Lock-free im Audio-Thread (SPSC Ring Buffer), sinnvolle Log-Levels
-- **Git-Workflow:** Feature-Branch pro WP, PR gegen `main`, nach Merge sprint-1 synchronisieren
-- **Testing:** Unit-Tests fuer jede neue Funktion, `zig-remote "build test"` IMMER vor Commit
+- **Kommentare:** `//` fuer nicht-offensichtliche Logik, `///` fuer public API Docs (Zig doc-comments), `#` fuer YAML/CI
+- **Commits:** Atomar, ein logischer Change pro Commit, aussagekraeftige Messages (`feat(ci): add release workflow with dual-repo sync (WP-138)`)
+- **Error Handling:** Error Unions (`!T`), NIEMALS `@panic` in Production, CI-Workflows mit expliziten Fehler-Steps
+- **Logging:** Structured Logging, Lock-free im Audio-Thread (SPSC Ring Buffer), CI: `echo "::error::"` fuer GitHub Actions
+- **Git-Workflow:** Feature-Branch pro WP, PR gegen `sprint-4`, CI muss gruen sein vor Merge
+- **Testing:** `zig-remote "build test"` + YAML-Validierung IMMER vor Commit
 - **Code-Qualitaet:** Keine TODO/FIXME ohne zugehoeriges GitHub Issue, kein Dead Code, kein Copy-Paste
 
-## ZIG REMOTE BUILD
+## BENCHMARKS (PFLICHT!)
+
+### Warum Benchmarks?
+Wir bauen einen Echtzeit-Audio-Synthesizer. Jeder Nanosekunde zaehlt — ein 128-Sample-Block bei 44.1kHz hat nur 2.9ms Budget. Integration-Module (Logging, IO, CI) duerfen das Audio-Budget nicht belasten. Benchmarks sind deshalb kein Nice-to-Have, sondern ein harter Gate fuer jedes WP.
+
+### Was bezwecken wir damit?
+1. **Bottlenecks finden**: Messen welche Integration-Module wie viel vom Audio-Budget verbrauchen
+2. **Optimieren**: IO-Strategien aendern, Benchmark wiederholen, vorher/nachher vergleichen
+3. **Overhead reduzieren**: Lock-free Logging, io_uring statt blocking IO — Overhead messen und minimieren
+4. **Regressionen verhindern**: Neue Aenderungen duerfen bestehende Performance nicht verschlechtern
+5. **Budget-Planung**: Wissen wie viel CPU-Budget Integration-Overhead verbraucht
+
+### Regeln fuer alle Agents
+- **AC-B1 ist PFLICHT**: Jedes Issue mit `## Benchmarks` Sektion hat eine `AC-B1` in den Akzeptanzkriterien — diese MUSS bestanden werden
+- **Schwellwerte sind hart**: Die Schwellwerte im Issue sind Obergrenzen, nicht Richtwerte
+- **Evidence**: Benchmark-Ergebnisse muessen als Command + Output dokumentiert werden
+- **Kein Issue-Close ohne Benchmarks**: Wenn AC-B1 im Issue steht, ist es ein harter Gate — Benchmarks uebersprungen = Issue bleibt offen
+- **Verify-Report**: Benchmark-Werte gehoeren in den Verify-Report (Tabelle mit gemessenen Werten)
+
+### Benchmark-Typen (S4-relevant)
+| Typ | Beschreibung | Typische Module |
+|-----|-------------|-----------------|
+| throughput | ops/s oder msg/s | Logging, OSC, MIDI-Routing |
+| latency | ns pro Operation | io_uring Submission, Log-Write, State Save/Load |
+| cycles/block | ns pro 128-Sample Block | Audio-Thread Logging-Overhead |
+| CI duration | Sekunden | Build-Zeit, Test-Suite, Release-Pipeline |
+| accuracy | Drift, Sync-Fehler | Ableton Link Sync, MIDI Clock |
+
+### Performance-Budgets (S4-Scope)
+| Metrik | Ziel |
+|--------|------|
+| Lock-free Log Write (RT-Thread) | < 50ns pro Message |
+| io_uring File Read (4KB) | < 100us |
+| OSC Message Dispatch | < 10us |
+| State Save (Full Preset) | < 5ms |
+| State Load (Full Preset) | < 10ms |
+| CI Build + Test (Full) | < 120s |
+
+### Dein Scope: Was du benchmarken musst
+- **Logging** (WP-123..124): Lock-free Write Latenz im Audio-Thread, Throughput Consumer-Thread
+- **io_uring** (WP-125..126): Submission-Latenz, File Read/Write Throughput
+- **OSC** (WP-127..128): Message-Parsing, Dispatch-Latenz, Bidirektional-Throughput
+- **Ableton Link** (WP-129): Sync-Genauigkeit, Drift ueber Zeit
+- **CI/CD** (WP-136..140): Build-Zeit, Test-Suite-Dauer, Release-Pipeline End-to-End
+- **State Management** (WP-130..132): Preset Save/Load Latenz, Schema-Migration Overhead
+
+## ZIG REMOTE BUILD (PFLICHT!)
 
 **Build-Server:** LXC `zigbuild` (CT 183) auf Proxmox 10.0.0.69
 **Adresse:** `builder@10.0.0.73`
@@ -189,52 +206,22 @@ zig-remote "build test"
 
 # ReleaseFast Tests
 zig-remote "build test -Doptimize=ReleaseFast"
-
-# Mit JACK-Flag
-zig-remote "build -Djack=true"
 ```
 
-### Neue Zig-Projekte einrichten
-`.zig-remote.toml` im Projekt-Root (neben build.zig) anlegen:
-```toml
-[remote]
-host = "zigbuild"
-temp_dir = "/opt/zig-builds"
-```
-
-### Benchmarks und Tests: Remote + Lokal
-
-**WICHTIG:** `zig-remote "build test"` kompiliert UND fuehrt Tests auf dem Build-Server aus!
-Die Benchmarks laufen also auf dem Build-Server (Intel i5-1235U P-Cores), NICHT auf dem Laptop (Ryzen 9 5900HS).
-
-**Konsequenzen:**
-- Build-Server hat andere CPU → andere Benchmark-Werte als lokal
-- Build-Server ist stabiler (kein Desktop, kein Browser) → weniger Varianz, reproduzierbarere Ergebnisse
-- Laptop ist das echte Ziel-System → lokale Werte sind relevanter fuer Praxis
-
-**CPU-Target Problem:**
-- Build-Server (Intel Alder Lake) baut mit `-march=native` → Binary enthaelt Instruktionen die Ryzen 9 5900HS (Zen 3) NICHT hat → `Illegal instruction` lokal!
-- Remote-Binaries NIEMALS lokal ausfuehren!
-- Fuer lokale Integration-Tests (JACK, PipeWire): `zig build` lokal ist erlaubt (Ausnahme!)
-
-**Strategie: IMMER doppelt testen!**
-1. `zig-remote "build test"` — Remote: Unit-Tests + Benchmarks auf Build-Server
-2. `zig build -Djack=true && ./zig-out/bin/worldsynth` — Lokal: Integration mit JACK/PipeWire
-
-**Ausnahme von "immer zig-remote":** Integration-Tests die lokale Services brauchen (JACK/PipeWire/Audio-Hardware) werden lokal gebaut und getestet mit `zig build`.
-
-**Binaries verwenden:** Fuer Benchmarks und alle Tests IMMER die kompilierten Binaries aus `zig-out/` verwenden. Das stellt sicher dass das tatsaechliche Artefakt getestet wird.
-
-**Schwellwerte:** Muessen fuer BEIDE Umgebungen passen. Bei neuen Benchmarks:
-1. Auf Build-Server messen (Remote-Baseline)
-2. Auf Laptop messen (Lokal-Baseline, x86_64_v3 Binary)
-3. Schwellwert = max(beide) * 2x Headroom
+### Benchmarks + Tests: DOPPELT ausfuehren!
+- Benchmarks laufen bei `zig-remote` auf dem **Build-Server (Intel i5-1235U)**, nicht auf dem Laptop (Ryzen 9 5900HS)
+- **IMMER doppelt testen** — Remote fuer stabile Baseline + Lokal fuer reale Ziel-Performance
+- **IMMER Binaries verwenden** (`zig-out/`) fuer Benchmarks und Tests, nicht `zig build test` direkt
+- Schwellwerte muessen fuer **beide Umgebungen** passen (max beider * 2x Headroom)
+- Beide Ergebnisse (remote + lokal) im Verify-Report dokumentieren
 
 ### Troubleshooting
 - Build-Server nicht erreichbar? Proxmox pruefen: `ssh root@10.0.0.69 "pct status 183"`
 - Container starten: `ssh root@10.0.0.69 "pct start 183"`
 - Zig-Version pruefen: `ssh zigbuild "zig version"`
 - tmpfs voll? Build-Cache leeren: `ssh zigbuild "rm -rf /opt/zig-builds/*"`
+
+---
 
 ## REFERENCES
 
