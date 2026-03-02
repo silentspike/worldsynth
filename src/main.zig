@@ -27,6 +27,9 @@ pub const dsp = struct {
     pub const effects = struct {
         pub const eq = @import("dsp/effects/eq.zig");
     };
+    pub const utilities = struct {
+        pub const dc_blocker = @import("dsp/utilities/dc_blocker.zig");
+    };
 };
 
 pub const io = struct {
@@ -115,6 +118,7 @@ test {
     _ = dsp.ladder;
     _ = dsp.waveshaper;
     _ = dsp.effects.eq;
+    _ = dsp.utilities.dc_blocker;
     _ = io.osc;
     _ = io.midi_learn;
     _ = io.midi;
