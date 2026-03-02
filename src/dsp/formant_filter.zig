@@ -290,6 +290,7 @@ test "benchmark: formant filter 128 samples" {
     var timer = std.time.Timer.start() catch unreachable;
     for (0..iterations) |_| {
         fmt.process_block(&input, &output);
+        std.mem.doNotOptimizeAway(&output);
     }
     const elapsed_ns = timer.read();
     const ns_per_block = elapsed_ns / iterations;

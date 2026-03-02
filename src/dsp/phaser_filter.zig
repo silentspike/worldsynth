@@ -312,7 +312,10 @@ test "benchmark: phaser 4 stages static" {
 
     const iterations: u64 = 500_000;
     var timer = std.time.Timer.start() catch unreachable;
-    for (0..iterations) |_| phaser.process_block(&input, &output);
+    for (0..iterations) |_| {
+        phaser.process_block(&input, &output);
+        std.mem.doNotOptimizeAway(&output);
+    }
     const ns_per_block = timer.read() / iterations;
 
     // Debug: ~8000-15000ns, ReleaseFast: ~1500-2500ns
@@ -337,7 +340,10 @@ test "benchmark: phaser 8 stages static" {
 
     const iterations: u64 = 500_000;
     var timer = std.time.Timer.start() catch unreachable;
-    for (0..iterations) |_| phaser.process_block(&input, &output);
+    for (0..iterations) |_| {
+        phaser.process_block(&input, &output);
+        std.mem.doNotOptimizeAway(&output);
+    }
     const ns_per_block = timer.read() / iterations;
 
     const budget_ns: u64 = 50000;
@@ -367,7 +373,10 @@ test "benchmark: phaser 8 stages modulated" {
 
     const iterations: u64 = 500_000;
     var timer = std.time.Timer.start() catch unreachable;
-    for (0..iterations) |_| phaser.process_block_modulated(&input, &lfo_buf, &output);
+    for (0..iterations) |_| {
+        phaser.process_block_modulated(&input, &lfo_buf, &output);
+        std.mem.doNotOptimizeAway(&output);
+    }
     const ns_per_block = timer.read() / iterations;
 
     const budget_ns: u64 = 80000;
