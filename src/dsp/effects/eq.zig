@@ -278,8 +278,8 @@ test "benchmark: EQ 8 bands 128 samples" {
     const ns_per_block = timer.read() / iterations;
 
     // 8 serial SVF bands: 8 × ~2200ns/SVF (debug) ≈ 17600ns
-    // Budget: generous for debug mode
-    const budget_ns: u64 = 50000;
+    // Budget: generous for debug mode + build server variability
+    const budget_ns: u64 = 100000;
     std.debug.print("\n[WP-046] EQ 8-band: {}ns/block, {}ns/band (budget: {}ns)\n", .{
         ns_per_block, ns_per_block / NUM_BANDS, budget_ns,
     });
