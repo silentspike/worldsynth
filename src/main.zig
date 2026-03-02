@@ -21,6 +21,7 @@ pub const dsp = struct {
     pub const filter = @import("dsp/filter.zig");
     pub const ladder = @import("dsp/ladder.zig");
     pub const envelope = @import("dsp/envelope.zig");
+    pub const voice_manager = @import("dsp/voice_manager.zig");
 };
 
 pub const io = struct {
@@ -105,6 +106,7 @@ test {
     _ = dsp.filter;
     _ = dsp.ladder;
     _ = dsp.envelope;
+    _ = dsp.voice_manager;
     _ = io.osc;
     _ = io.midi_learn;
     _ = io.midi;
