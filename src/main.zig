@@ -23,6 +23,7 @@ pub const dsp = struct {
     pub const phaser_filter = @import("dsp/phaser_filter.zig");
     pub const diode_filter = @import("dsp/diode_filter.zig");
     pub const ladder = @import("dsp/ladder.zig");
+    pub const waveshaper = @import("dsp/waveshaper.zig");
 };
 
 pub const io = struct {
@@ -109,6 +110,7 @@ test {
     _ = dsp.phaser_filter;
     _ = dsp.diode_filter;
     _ = dsp.ladder;
+    _ = dsp.waveshaper;
     _ = io.osc;
     _ = io.midi_learn;
     _ = io.midi;
