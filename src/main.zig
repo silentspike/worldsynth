@@ -21,6 +21,7 @@ pub const dsp = struct {
     pub const filter = @import("dsp/filter.zig");
     pub const formant_filter = @import("dsp/formant_filter.zig");
     pub const phaser_filter = @import("dsp/phaser_filter.zig");
+    pub const diode_filter = @import("dsp/diode_filter.zig");
     pub const ladder = @import("dsp/ladder.zig");
 };
 
@@ -106,6 +107,7 @@ test {
     _ = dsp.filter;
     _ = dsp.formant_filter;
     _ = dsp.phaser_filter;
+    _ = dsp.diode_filter;
     _ = dsp.ladder;
     _ = io.osc;
     _ = io.midi_learn;
