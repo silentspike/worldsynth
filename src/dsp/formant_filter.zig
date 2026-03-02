@@ -294,11 +294,11 @@ test "benchmark: formant filter 128 samples" {
     const elapsed_ns = timer.read();
     const ns_per_block = elapsed_ns / iterations;
 
-    // Budget: 5x SVF BP (~2300ns each on build-server) + routing overhead
-    // Debug mode: ~17000ns, ReleaseFast: ~5000-7500ns
-    // Threshold set for test-mode (debug); real benchmark via ReleaseFast
-    const budget_ns: u64 = 25000;
+    // Budget: Issue says < 7500ns (ReleaseFast target)
+    // Debug mode: ~18000ns (remote), ~26000ns (local Ryzen 9)
+    // ReleaseFast: ~1522ns (remote), ~2128ns (local)
+    // Threshold for debug test gate: 35000ns (covers both CPUs with headroom)
+    const budget_ns: u64 = 35000;
     std.debug.print("\n[WP-033] formant_filter 5xSVF: {}ns/block (budget: {}ns)\n", .{ ns_per_block, budget_ns });
-    std.debug.print("  SVF baseline: ~2300ns/block, 5x = ~11500ns + overhead\n", .{});
     try std.testing.expect(ns_per_block < budget_ns);
 }
