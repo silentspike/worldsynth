@@ -35,55 +35,115 @@ pub const io = struct {
 };
 
 const build_options = @import("build_options");
+const Engine = @import("engine/engine.zig").Engine;
+const jack_mod = @import("io/jack.zig");
 
-// 440Hz test sine for audio output verification
-var test_phase: f32 = 0.0;
-fn testSine(out_l: [*]f32, out_r: [*]f32, n_frames: u32) void {
-    const freq: f32 = 440.0;
-    const sr: f32 = 44100.0;
-    const inc: f32 = freq / sr;
-    const amp: f32 = 0.25;
-    for (0..n_frames) |i| {
-        const sample = amp * @sin(test_phase * 2.0 * std.math.pi);
-        out_l[i] = sample;
-        out_r[i] = sample;
-        test_phase += inc;
-        if (test_phase >= 1.0) test_phase -= 1.0;
+// ── Global Engine reference for RT callbacks ─────────────────────────
+// JACK/PipeWire callbacks are plain function pointers without context.
+// Set BEFORE backend.start(), cleared AFTER backend.stop().
+var global_engine: ?*Engine = null;
+
+// ── Global backend reference for signal handler ──────────────────────
+// PipeWire blocks in pw_main_loop_run — signal handler must call quit().
+var global_backend: ?*io.audio_backend.AudioBackend = null;
+
+// ── Signal handler for clean shutdown ────────────────────────────────
+var running = std.atomic.Value(bool).init(true);
+
+fn sighandler(_: c_int) callconv(.c) void {
+    running.store(false, .release);
+    // Unblock PipeWire's pw_main_loop_run (signal-safe)
+    if (global_backend) |b| b.quit();
+}
+
+// ── Audio callback: Engine.process wrapper ───────────────────────────
+fn audioCallback(out_l: [*]f32, out_r: [*]f32, n_frames: u32) void {
+    if (global_engine) |eng| {
+        eng.process(out_l[0..n_frames], out_r[0..n_frames], n_frames);
+    } else {
+        @memset(out_l[0..n_frames], 0);
+        @memset(out_r[0..n_frames], 0);
+    }
+}
+
+// ── MIDI callback: MidiEvent → raw bytes → Engine ────────────────────
+fn midiCallback(event: jack_mod.MidiEvent) void {
+    if (global_engine) |eng| {
+        var buf: [3]u8 = undefined;
+        buf[0] = (@as(u8, @intFromEnum(event.status)) << 4) | event.channel;
+        buf[1] = event.data1;
+        buf[2] = event.data2;
+        eng.handle_midi_event(&buf);
     }
 }
 
 pub fn main() void {
     std.debug.print("WorldSynth starting...\n", .{});
 
-    var backend = io.audio_backend.AudioBackend.detect_and_init(testSine, null) catch |err| {
+    // Signal handlers for graceful shutdown (SIGINT, SIGTERM)
+    const act = std.posix.Sigaction{
+        .handler = .{ .handler = sighandler },
+        .mask = std.posix.sigemptyset(),
+        .flags = 0,
+    };
+    std.posix.sigaction(std.posix.SIG.INT, &act, null);
+    std.posix.sigaction(std.posix.SIG.TERM, &act, null);
+
+    // Audio backend detection (PipeWire first, JACK fallback)
+    var backend = io.audio_backend.AudioBackend.detect_and_init(audioCallback, midiCallback) catch |err| {
         std.debug.print("Audio backend init failed: {}\n", .{err});
         return;
     };
 
+    const sample_rate = backend.get_sample_rate();
+
     switch (backend) {
-        .pipewire => std.debug.print("Backend: PipeWire\n", .{}),
-        .jack => std.debug.print("Backend: JACK\n", .{}),
+        .pipewire => std.debug.print("Backend: PipeWire @ {d}Hz\n", .{sample_rate}),
+        .jack => std.debug.print("Backend: JACK @ {d}Hz\n", .{sample_rate}),
     }
 
-    backend.start() catch |err| {
-        std.debug.print("Audio backend start failed: {}\n", .{err});
+    // Engine creation (heap alloc here only, never in audio thread)
+    const eng = Engine.create(std.heap.page_allocator, @floatFromInt(sample_rate)) catch |err| {
+        std.debug.print("Engine init failed: {}\n", .{err});
         backend.stop();
         return;
     };
 
-    // JACK start() returns immediately — spin-wait until signal
+    // Set saw waveform as default (audible, harmonically rich)
+    eng.param_state.set_param(.osc1_waveform, 1.0);
+
+    // Publish engine + backend to RT callbacks / signal handler BEFORE start
+    global_engine = eng;
+    global_backend = &backend;
+
+    std.debug.print("WorldSynth active. Press Ctrl+C to quit.\n", .{});
+
+    // PipeWire: start() blocks in pw_main_loop_run until quit() is called.
+    // JACK: start() returns immediately — spin-wait on running flag.
+    backend.start() catch |err| {
+        std.debug.print("Audio backend start failed: {}\n", .{err});
+        global_backend = null;
+        global_engine = null;
+        eng.destroy(std.heap.page_allocator);
+        backend.stop();
+        return;
+    };
+
+    // JACK: wait for shutdown signal (PipeWire already exited via quit())
     switch (backend) {
-        .jack => {
-            std.debug.print("JACK client active. Press Ctrl+C to quit.\n", .{});
-            while (true) {
-                std.Thread.sleep(100 * std.time.ns_per_ms);
-            }
+        .jack => while (running.load(.acquire)) {
+            std.Thread.sleep(10 * std.time.ns_per_ms);
         },
         .pipewire => {},
     }
 
-    // PipeWire: main loop returned — cleanup
+    std.debug.print("\nShutting down...\n", .{});
+
+    // Cleanup: stop backend first, then release engine
+    global_backend = null;
     backend.stop();
+    global_engine = null;
+    eng.destroy(std.heap.page_allocator);
 }
 
 test {

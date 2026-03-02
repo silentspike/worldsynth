@@ -56,6 +56,18 @@ pub const AudioBackend = union(enum) {
         }
     }
 
+    /// Signal the backend to stop its event loop (signal-safe).
+    /// PipeWire: calls pw_main_loop_quit to unblock start().
+    /// JACK: no-op (use atomic flag in main loop instead).
+    pub fn quit(self: *AudioBackend) void {
+        switch (self.*) {
+            .pipewire => |*pw| if (comptime build_options.enable_pipewire) {
+                pw.quit();
+            } else unreachable,
+            .jack => {},
+        }
+    }
+
     /// Stop audio processing and release all resources.
     pub fn stop(self: *AudioBackend) void {
         switch (self.*) {
