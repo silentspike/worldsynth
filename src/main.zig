@@ -11,6 +11,7 @@ pub const engine = struct {
     pub const undo = @import("engine/undo.zig");
     pub const microtuning = @import("engine/microtuning.zig");
     pub const bench = @import("engine/bench.zig");
+    pub const engine_core = @import("engine/engine.zig");
 };
 
 pub const dsp = struct {
@@ -96,6 +97,7 @@ test {
     _ = engine.undo;
     _ = engine.microtuning;
     _ = engine.bench;
+    _ = engine.engine_core;
     _ = io.jack;
     _ = io.pipewire;
     _ = io.audio_backend;
