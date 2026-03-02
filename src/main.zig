@@ -17,6 +17,9 @@ pub const dsp = struct {
     pub const voice = @import("dsp/voice.zig");
     pub const drift = @import("dsp/drift.zig");
     pub const oscillator = @import("dsp/oscillator.zig");
+    pub const osc_sine_noise = @import("dsp/osc_sine_noise.zig");
+    pub const filter = @import("dsp/filter.zig");
+    pub const ladder = @import("dsp/ladder.zig");
 };
 
 pub const io = struct {
@@ -97,6 +100,9 @@ test {
     _ = dsp.voice;
     _ = dsp.drift;
     _ = dsp.oscillator;
+    _ = dsp.osc_sine_noise;
+    _ = dsp.filter;
+    _ = dsp.ladder;
     _ = io.osc;
     _ = io.midi_learn;
     _ = io.midi;
