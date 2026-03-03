@@ -45,6 +45,12 @@ pub const VoiceManager = struct {
         self.pool.hot[c].phase[s] = 0.0;
         self.pool.hot[c].prev_output[s] = 0.0;
 
+        // Reset filter state (prevents transient artifacts from previous note)
+        self.pool.cold[c].flt_z1[s] = 0.0;
+        self.pool.cold[c].flt_z2[s] = 0.0;
+        self.pool.cold[c].flt_x1[s] = 0.0;
+        self.pool.cold[c].flt_x2[s] = 0.0;
+
         // Metadata
         self.pool.cold[c].note[s] = note;
         self.pool.cold[c].velocity[s] = velocity;

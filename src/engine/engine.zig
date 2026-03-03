@@ -19,6 +19,15 @@ const envelope = @import("../dsp/envelope.zig");
 
 pub const BLOCK_SIZE: usize = 128;
 
+/// Soft-clip via Padé[1,1] tanh approximation.
+/// Maps any input smoothly to [-1, +1]. Zero-cost for signals already in range.
+/// Used in the master output stage to guarantee bounded output regardless of voice count.
+inline fn softClip(x: f32) f32 {
+    const x2 = x * x;
+    if (x2 > 9.0) return if (x > 0) @as(f32, 1.0) else @as(f32, -1.0);
+    return x * (27.0 + x2) / (27.0 + 9.0 * x2);
+}
+
 pub const Engine = struct {
     voice_pool: voice.VoicePool,
     voice_manager: vm.VoiceManager,
@@ -27,6 +36,9 @@ pub const Engine = struct {
     sample_rate: f32,
     voice_buf: [BLOCK_SIZE]f32,
     filter_buf: [BLOCK_SIZE]f32,
+    /// Smoothed voice-count compensation factor (1/sqrt(N)).
+    /// Prevents polyphonic clipping while avoiding volume pumping.
+    voice_comp: f32 = 1.0,
 
     /// Allocate and initialize engine. Heap allocation happens here only.
     pub fn create(allocator: std.mem.Allocator, sample_rate: f32) !*Engine {
@@ -38,6 +50,7 @@ pub const Engine = struct {
         self.sample_rate = sample_rate;
         self.voice_buf = [_]f32{0.0} ** BLOCK_SIZE;
         self.filter_buf = [_]f32{0.0} ** BLOCK_SIZE;
+        self.voice_comp = 1.0;
         return self;
     }
 
@@ -78,6 +91,20 @@ pub const Engine = struct {
 
         // Master volume
         const master_vol: f32 = @floatCast(snap.values[@intFromEnum(param.ParamID.master_volume)]);
+
+        // Voice-count compensation: 1/sqrt(N) with asymmetric smoothing.
+        // Prevents polyphonic clipping (64 saws at full vel would be ~32x overdrive).
+        // Fast attack (snap down) prevents clipping on note-on bursts.
+        // Slow release (fade up) prevents volume pumping on note-off.
+        const active = self.voice_manager.active_count();
+        const comp_target: f32 = if (active <= 1) 1.0 else 1.0 / @sqrt(@as(f32, @floatFromInt(active)));
+        if (comp_target < self.voice_comp) {
+            // More voices active — snap down immediately (prevents clipping)
+            self.voice_comp = comp_target;
+        } else {
+            // Fewer voices active — smooth up quickly (~25ms, imperceptible transition)
+            self.voice_comp += 0.3 * (comp_target - self.voice_comp);
+        }
 
         // Zero output buffers
         @memset(out_l[0..frames], 0);
@@ -127,10 +154,14 @@ pub const Engine = struct {
             }
         }
 
-        // Master volume
+        // Master output: gain + soft-limiter.
+        // 1/sqrt(N) voice compensation keeps signal manageable (~2-3x peak).
+        // softClip(tanh) maps residual peaks smoothly to [-1, +1].
+        // Result: guaranteed bounded output for any voice count (64, 128, ...).
+        const gain = master_vol * self.voice_comp;
         for (0..frames) |i| {
-            out_l[i] *= master_vol;
-            out_r[i] *= master_vol;
+            out_l[i] = softClip(out_l[i] * gain);
+            out_r[i] = softClip(out_r[i] * gain);
         }
     }
 };
@@ -146,6 +177,7 @@ fn create_test_engine() !*Engine {
     eng.sample_rate = 44100.0;
     eng.voice_buf = [_]f32{0.0} ** BLOCK_SIZE;
     eng.filter_buf = [_]f32{0.0} ** BLOCK_SIZE;
+    eng.voice_comp = 1.0;
     // Default waveform is sine (0), set to saw (1) for audible output
     eng.param_state.set_param(.osc1_waveform, 1.0);
     return eng;
@@ -356,6 +388,45 @@ test "param change affects filter" {
     }
     // Default cutoff 1000 Hz should pass more energy than 50 Hz for A4 (440 Hz)
     try std.testing.expect(rms_default > rms_low);
+}
+
+test "64 voices: output strictly bounded [-1, 1] with integrated limiter" {
+    const eng = try create_test_engine();
+    defer destroy_test_engine(eng);
+    // Open filter so saw harmonics are not attenuated
+    eng.param_state.set_param(.filter_cutoff, 20000.0);
+
+    // Fill all 64 voices with different notes at max velocity
+    for (0..64) |i| {
+        eng.handle_midi_event(&[_]u8{ 0x90, @intCast(24 + (i % 48)), 127 });
+    }
+    try std.testing.expectEqual(@as(u32, 64), eng.voice_manager.active_count());
+
+    // Process enough blocks for envelopes to reach sustain.
+    // The integrated soft-limiter (1/sqrt(N) compensation + softClip) guarantees
+    // output is always bounded [-1, +1] regardless of voice count.
+    var peak: f32 = 0;
+    for (0..200) |_| {
+        var out_l: [BLOCK_SIZE]f32 = [_]f32{0.0} ** BLOCK_SIZE;
+        var out_r: [BLOCK_SIZE]f32 = [_]f32{0.0} ** BLOCK_SIZE;
+        eng.process(&out_l, &out_r, BLOCK_SIZE);
+
+        for (out_l) |s| {
+            try std.testing.expect(s >= -1.0 and s <= 1.0);
+            if (@abs(s) > peak) peak = @abs(s);
+        }
+        for (out_r) |s| {
+            try std.testing.expect(s >= -1.0 and s <= 1.0);
+        }
+    }
+    std.debug.print("\n  [voice-comp] 64 voices peak: {d:.3}\n", .{peak});
+    std.debug.print("    voice_comp: {d:.4}\n", .{eng.voice_comp});
+
+    // With integrated limiter, output MUST be strictly bounded [-1, 1].
+    // softClip(tanh) guarantees this mathematically.
+    try std.testing.expect(peak <= 1.0);
+    // Verify we actually got meaningful output (not just silence)
+    try std.testing.expect(peak > 0.1);
 }
 
 // ── Benchmarks ────────────────────────────────────────────────────────
