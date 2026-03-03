@@ -73,7 +73,7 @@ jobs:
         if: (needs.changes.outputs.zig == 'true' || github.event_name == 'push') && needs.changes.outputs.has_zig == 'true'
         uses: mlugg/setup-zig@v2
         with:
-          version: 0.14.1
+          version: 0.15.2
 
       - name: Run zig fmt --check
         if: (needs.changes.outputs.zig == 'true' || github.event_name == 'push') && needs.changes.outputs.has_zig == 'true'
@@ -103,7 +103,7 @@ jobs:
 
       - uses: mlugg/setup-zig@v2
         with:
-          version: 0.14.1
+          version: 0.15.2
 
       # Zig cache: .zig-cache/ and zig-cache/ directories
       - uses: actions/cache@v4
