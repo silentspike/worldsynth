@@ -508,14 +508,20 @@ fn monitorThread(sample_rate_val: u32) void {
         const nf_tag: []const u8 = if (nf_val > 0.0001) " NOISE!" else "";
 
         std.debug.print("\r  VU L[{s}] {d:6.1}dB  R[{s}] {d:6.1}dB  v={d} buf={d}({d:.1}ms) proc={d}us max={d}us pk={d:.1}dB c={d} x={d} st={d} nf={d:.0}u d={d} ml={d}us{s}{s}{s}{s}      ", .{
-            &bar_l,       db_l,
-            &bar_r,       db_r,
-            voices,       n_fr,        buf_lat_ms,
-            cb_us,        cb_max_us,   true_pk_db,
-            total_clips,  xruns,       total_stutters,
+            &bar_l,         db_l,
+            &bar_r,         db_r,
+            voices,         n_fr,
+            buf_lat_ms,     cb_us,
+            cb_max_us,      true_pk_db,
+            total_clips,    xruns,
+            total_stutters,
             nf_val * 1000000.0, // noise floor in micro-units
-            total_dropouts, midi_lat_us,
-            clip_tag,     xrun_tag,    stut_tag,       nf_tag,
+            total_dropouts,
+            midi_lat_us,
+            clip_tag,
+            xrun_tag,
+            stut_tag,
+            nf_tag,
         });
 
         std.Thread.sleep(50 * std.time.ns_per_ms); // 50ms interval (faster than 100ms for stutter visibility)
@@ -870,7 +876,7 @@ fn testMidiThread() void {
     const crest: f32 = if (rms_linear > 0.0001) final_true_pk / rms_linear else 0.0;
     const crest_db: f32 = if (crest > 0.01) 20.0 * @log10(crest) else 0.0;
     std.debug.print("  Crest factor         : {d:.1} ({d:.1} dB){s}\n", .{
-        crest, crest_db,
+        crest,                                                                                                   crest_db,
         if (crest > 0.01 and crest < 1.5) @as([]const u8, " *** WARN: compressed ***") else @as([]const u8, ""),
     });
     // DC offset

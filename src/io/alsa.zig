@@ -117,8 +117,8 @@ extern "c" fn mlockall(flags: c_int) c_int;
 
 // ── AlsaClient ────────────────────────────────────────────────────────
 
-    /// Sample format detected during card configuration.
-    pub const SampleFormat = enum { float_le, s32_le, s24_3le };
+/// Sample format detected during card configuration.
+pub const SampleFormat = enum { float_le, s32_le, s24_3le };
 
 pub const AlsaClient = struct {
     pcm: *snd_pcm_t,
