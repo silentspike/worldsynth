@@ -29,6 +29,7 @@ pub const dsp = struct {
     };
     pub const utilities = struct {
         pub const dc_blocker = @import("dsp/utilities/dc_blocker.zig");
+        pub const oversampling = @import("dsp/utilities/oversampling.zig");
     };
 };
 
@@ -119,6 +120,7 @@ test {
     _ = dsp.waveshaper;
     _ = dsp.effects.eq;
     _ = dsp.utilities.dc_blocker;
+    _ = dsp.utilities.oversampling;
     _ = io.osc;
     _ = io.midi_learn;
     _ = io.midi;
