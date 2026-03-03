@@ -26,7 +26,7 @@ pub const VOWEL_FORMANTS = [5][NUM_BANDS]f32{
 
 /// Per-band resonance values (0..1). Higher formants get tighter Q.
 /// Q ≈ 1/(2*(1-r)): r=0.94→Q≈8.3, r=0.96→Q≈12.5, r=0.97→Q≈16.7
-const BAND_RESONANCE = [NUM_BANDS]f32{ 0.94, 0.96, 0.96, 0.97, 0.97 };
+pub const BAND_RESONANCE = [NUM_BANDS]f32{ 0.94, 0.96, 0.96, 0.97, 0.97 };
 
 pub const FormantFilter = struct {
     const Self = @This();
