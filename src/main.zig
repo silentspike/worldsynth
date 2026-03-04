@@ -25,6 +25,10 @@ pub const dsp = struct {
     pub const voice_manager = @import("dsp/voice_manager.zig");
 };
 
+pub const platform = struct {
+    pub const ring_buffer = @import("platform/ring_buffer.zig");
+};
+
 pub const io = struct {
     pub const jack = @import("io/jack.zig");
     pub const pipewire = @import("io/pipewire.zig");
@@ -1259,4 +1263,5 @@ test {
     _ = io.osc;
     _ = io.midi_learn;
     _ = io.midi;
+    _ = platform.ring_buffer;
 }
