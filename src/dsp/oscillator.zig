@@ -206,13 +206,7 @@ pub fn process_block(phase_ptr: *f32, phase_inc: f32, wave: WaveType, out_buf: *
             phase_ptr.* = phase;
         },
         .sine => {
-            var phase = phase_ptr.*;
-            for (out_buf) |*sample| {
-                sample.* = sine_tables.sine_lookup(phase);
-                phase += phase_inc;
-                if (phase >= 1.0) phase -= 1.0;
-            }
-            phase_ptr.* = phase;
+            sine_tables.sine_lookup_block(BLOCK_SIZE, phase_ptr, phase_inc, out_buf);
         },
         .noise => {
             osc_sine_noise.noise_block(phase_ptr, out_buf);
