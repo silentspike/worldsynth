@@ -20,7 +20,10 @@ permissions:
 
 jobs:
   benchmark:
-    runs-on: [self-hosted, worldsynth]
+    runs-on:
+      - self-hosted
+      - worldsynth
+      - ${{ github.event_name == 'pull_request' && (github.base_ref == 'sprint-2' && 'worldsynth-s2' || github.base_ref == 'sprint-3' && 'worldsynth-s3' || github.base_ref == 'sprint-4' && 'worldsynth-s4' || 'worldsynth-s1') || (github.ref_name == 'sprint-2' && 'worldsynth-s2' || github.ref_name == 'sprint-3' && 'worldsynth-s3' || github.ref_name == 'sprint-4' && 'worldsynth-s4' || 'worldsynth-s1') }}
     steps:
       - uses: actions/checkout@v4
 
