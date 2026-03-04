@@ -27,6 +27,7 @@ pub const dsp = struct {
 
 pub const platform = struct {
     pub const ring_buffer = @import("platform/ring_buffer.zig");
+    pub const barrier = @import("platform/barrier.zig");
 };
 
 pub const io = struct {
@@ -1264,4 +1265,5 @@ test {
     _ = io.midi_learn;
     _ = io.midi;
     _ = platform.ring_buffer;
+    _ = platform.barrier;
 }
