@@ -136,7 +136,6 @@ pub const OnnxError = error{
     ApiUnavailable,
     RuntimeFailure,
     EmptyInput,
-    InputOutputLengthMismatch,
 };
 
 fn checkStatus(api: *const OrtApi, status: OrtStatusPtr) OnnxError!void {
@@ -190,9 +189,8 @@ pub const OnnxSession = struct {
     pub fn run(self: *OnnxSession, input: []const f32, output: []f32) OnnxError!void {
         if (comptime !build_options.enable_neural) return error.NeuralDisabled;
         if (input.len == 0 or output.len == 0) return error.EmptyInput;
-        if (input.len != output.len) return error.InputOutputLengthMismatch;
-
-        var shape = [_]i64{ 1, @as(i64, @intCast(input.len)) };
+        var input_shape = [_]i64{ 1, @as(i64, @intCast(input.len)) };
+        var output_shape = [_]i64{ 1, @as(i64, @intCast(output.len)) };
 
         var input_tensor: ?*OrtValue = null;
         var output_tensor: ?*OrtValue = null;
@@ -203,8 +201,8 @@ pub const OnnxSession = struct {
             self.memory_info,
             @ptrCast(@constCast(input.ptr)),
             input.len * @sizeOf(f32),
-            &shape,
-            shape.len,
+            &input_shape,
+            input_shape.len,
             @intFromEnum(OnnxTensorElementDataType.float),
             &input_tensor,
         ));
@@ -212,8 +210,8 @@ pub const OnnxSession = struct {
             self.memory_info,
             @ptrCast(output.ptr),
             output.len * @sizeOf(f32),
-            &shape,
-            shape.len,
+            &output_shape,
+            output_shape.len,
             @intFromEnum(OnnxTensorElementDataType.float),
             &output_tensor,
         ));
