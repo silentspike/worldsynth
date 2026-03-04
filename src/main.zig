@@ -26,6 +26,7 @@ pub const dsp = struct {
     pub const waveshaper = @import("dsp/waveshaper.zig");
     pub const engines = struct {
         pub const formant_engine = @import("dsp/engines/formant_engine.zig");
+        pub const neural = @import("dsp/engines/neural.zig");
     };
     pub const effects = struct {
         pub const eq = @import("dsp/effects/eq.zig");
@@ -124,6 +125,7 @@ test {
     _ = dsp.ladder;
     _ = dsp.waveshaper;
     _ = dsp.engines.formant_engine;
+    _ = dsp.engines.neural;
     _ = dsp.effects.eq;
     _ = dsp.utilities.dc_blocker;
     _ = dsp.utilities.oversampling;
