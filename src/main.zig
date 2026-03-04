@@ -9,6 +9,7 @@ pub const engine = struct {
     pub const param = @import("engine/param.zig");
     pub const param_smooth = @import("engine/param_smooth.zig");
     pub const undo = @import("engine/undo.zig");
+    pub const quality_governor = @import("engine/quality_governor.zig");
     pub const microtuning = @import("engine/microtuning.zig");
     pub const bench = @import("engine/bench.zig");
 };
@@ -16,6 +17,7 @@ pub const engine = struct {
 pub const dsp = struct {
     pub const voice = @import("dsp/voice.zig");
     pub const drift = @import("dsp/drift.zig");
+    pub const sub_harmonics = @import("dsp/sub_harmonics.zig");
 };
 
 pub const io = struct {
@@ -57,11 +59,13 @@ test {
     _ = engine.param;
     _ = engine.param_smooth;
     _ = engine.undo;
+    _ = engine.quality_governor;
     _ = engine.microtuning;
     _ = engine.bench;
     _ = io.jack;
     _ = dsp.voice;
     _ = dsp.drift;
+    _ = dsp.sub_harmonics;
     _ = io.osc;
     _ = io.midi_learn;
     _ = io.midi;
