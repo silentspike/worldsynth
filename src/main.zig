@@ -29,6 +29,7 @@ pub const platform = struct {
     pub const ring_buffer = @import("platform/ring_buffer.zig");
     pub const barrier = @import("platform/barrier.zig");
     pub const thread_pool = @import("platform/thread_pool.zig");
+    pub const clap_thread_pool = @import("platform/clap_thread_pool.zig");
 };
 
 pub const io = struct {
@@ -1268,4 +1269,5 @@ test {
     _ = platform.ring_buffer;
     _ = platform.barrier;
     _ = platform.thread_pool;
+    _ = platform.clap_thread_pool;
 }

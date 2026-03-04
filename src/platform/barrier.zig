@@ -16,8 +16,13 @@ pub const Barrier = struct {
     }
 
     pub inline fn wait(self: *Barrier) void {
-        while (self.remaining.load(.acquire) != 0) {
-            std.atomic.spinLoopHint();
+        var spins: u32 = 0;
+        while (self.remaining.load(.acquire) != 0) : (spins +%= 1) {
+            if (spins >= 256 and (spins & 31) == 0) {
+                std.Thread.yield() catch {};
+            } else {
+                std.atomic.spinLoopHint();
+            }
         }
     }
 };

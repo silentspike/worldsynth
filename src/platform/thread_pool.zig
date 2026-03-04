@@ -1,5 +1,6 @@
 const std = @import("std");
 const builtin = @import("builtin");
+const barrier_mod = @import("barrier.zig");
 
 const benchmark_enforced = builtin.mode == .ReleaseFast or builtin.mode == .ReleaseSmall;
 const benchmark_runs = 7;
@@ -88,6 +89,267 @@ pub fn ChaseLevDeque(comptime T: type, comptime LOG2_SIZE: u5) type {
         }
     };
 }
+
+pub const MAX_WORKERS: usize = 14;
+pub const WORK_DEQUE_LOG2_SIZE: u5 = 8; // 256 jobs per worker.
+
+pub const JobFn = *const fn (ctx: *anyopaque, chunk_idx: u8, work_cycles: u16) void;
+
+pub const VoiceChunkJob = struct {
+    chunk_idx: u8,
+    chunk_count: u8 = 1,
+    work_cycles: u16 = 0,
+    ctx: ?*anyopaque = null,
+    run: ?JobFn = null,
+};
+
+pub const ThreadPool = struct {
+    const Self = @This();
+    const WorkerDeque = ChaseLevDeque(VoiceChunkJob, WORK_DEQUE_LOG2_SIZE);
+
+    deques: [MAX_WORKERS]WorkerDeque = undefined,
+    barrier: barrier_mod.Barrier = .{},
+    running: std.atomic.Value(bool) = std.atomic.Value(bool).init(false),
+    threads: [MAX_WORKERS]?std.Thread = [_]?std.Thread{null} ** MAX_WORKERS,
+    n_workers: u8 = 0,
+    next_owner: u8 = 0,
+    steal_events: std.atomic.Value(u32) = std.atomic.Value(u32).init(0),
+    steal_enabled: std.atomic.Value(bool) = std.atomic.Value(bool).init(false),
+
+    pub fn init(self: *Self, requested_workers: u8) !void {
+        self.shutdown();
+
+        for (0..MAX_WORKERS) |i| {
+            self.deques[i] = .{};
+            self.threads[i] = null;
+        }
+
+        const clamped: usize = @min(@as(usize, requested_workers), MAX_WORKERS);
+        if (clamped == 0) {
+            self.n_workers = 0;
+            self.barrier.reset(0);
+            return;
+        }
+
+        self.n_workers = @intCast(clamped);
+        self.next_owner = 0;
+        self.steal_events.store(0, .release);
+        self.steal_enabled.store(false, .release);
+        self.barrier.reset(0);
+        self.running.store(true, .release);
+
+        var started: usize = 0;
+        errdefer {
+            self.running.store(false, .release);
+            for (self.threads[0..started]) |*maybe_thread| {
+                if (maybe_thread.*) |thread| thread.join();
+                maybe_thread.* = null;
+            }
+            self.n_workers = 0;
+            self.barrier.reset(0);
+        }
+
+        for (0..clamped) |i| {
+            self.threads[i] = try std.Thread.spawn(.{}, struct {
+                fn run(pool: *Self, worker_id: u8) void {
+                    pool.workerLoop(worker_id);
+                }
+            }.run, .{ self, @as(u8, @intCast(i)) });
+            started += 1;
+        }
+    }
+
+    pub fn shutdown(self: *Self) void {
+        _ = self.running.swap(false, .acq_rel);
+
+        const count: usize = self.n_workers;
+        for (self.threads[0..count]) |*maybe_thread| {
+            if (maybe_thread.*) |thread| thread.join();
+            maybe_thread.* = null;
+        }
+
+        self.n_workers = 0;
+        self.next_owner = 0;
+        self.barrier.reset(0);
+        self.steal_enabled.store(false, .release);
+    }
+
+    pub inline fn wait(self: *Self) void {
+        self.barrier.wait();
+    }
+
+    pub inline fn worker_count(self: *const Self) u8 {
+        return self.n_workers;
+    }
+
+    pub inline fn current_steal_events(self: *const Self) u32 {
+        return self.steal_events.load(.acquire);
+    }
+
+    pub fn dispatch_chunk_jobs(self: *Self, n_chunks: u8, prototype: VoiceChunkJob) u32 {
+        if (self.n_workers == 0 or n_chunks == 0) {
+            self.steal_events.store(0, .release);
+            self.barrier.reset(0);
+            return 0;
+        }
+
+        const n_workers: usize = self.n_workers;
+        const requested: usize = n_chunks;
+        const workers_used: usize = @min(n_workers, requested);
+        const base_chunks: usize = requested / workers_used;
+        const remainder_chunks: usize = requested % workers_used;
+        self.steal_events.store(0, .release);
+        self.steal_enabled.store(false, .release);
+        self.barrier.reset(@intCast(workers_used));
+
+        const owner_start: usize = self.next_owner;
+        var enqueued_jobs: usize = 0;
+        var enqueued_chunks: usize = 0;
+        var next_chunk: usize = 0;
+        for (0..workers_used) |i| {
+            const chunks_for_worker = base_chunks + @intFromBool(i < remainder_chunks);
+            std.debug.assert(chunks_for_worker > 0);
+
+            var job = prototype;
+            job.chunk_idx = @intCast(next_chunk);
+            job.chunk_count = @intCast(chunks_for_worker);
+            next_chunk += chunks_for_worker;
+
+            const preferred: u8 = @intCast((owner_start + i) % n_workers);
+            if (!self.pushToWorker(preferred, job)) break;
+            enqueued_jobs += 1;
+            enqueued_chunks += chunks_for_worker;
+        }
+
+        self.next_owner = @intCast((owner_start + enqueued_jobs) % n_workers);
+
+        if (enqueued_jobs < workers_used) {
+            var missing = workers_used - enqueued_jobs;
+            while (missing > 0) : (missing -= 1) {
+                self.barrier.worker_done();
+            }
+        }
+
+        return @intCast(enqueued_chunks);
+    }
+
+    pub fn dispatch_chunk_jobs_skewed(self: *Self, n_chunks: u8, target_worker: u8, prototype: VoiceChunkJob) u32 {
+        if (self.n_workers == 0 or n_chunks == 0) {
+            self.steal_events.store(0, .release);
+            self.barrier.reset(0);
+            return 0;
+        }
+
+        const n_workers: usize = self.n_workers;
+        const target: u8 = @intCast(@as(usize, target_worker) % n_workers);
+        const requested: usize = n_chunks;
+        self.steal_events.store(0, .release);
+        self.steal_enabled.store(true, .release);
+        self.barrier.reset(@intCast(requested));
+
+        var enqueued: usize = 0;
+        for (0..requested) |i| {
+            var job = prototype;
+            job.chunk_idx = @intCast(i);
+            job.chunk_count = 1;
+            if (!self.pushToWorker(target, job)) break;
+            enqueued += 1;
+        }
+
+        if (enqueued < requested) {
+            var missing = requested - enqueued;
+            while (missing > 0) : (missing -= 1) {
+                self.barrier.worker_done();
+            }
+        }
+
+        return @intCast(enqueued);
+    }
+
+    fn pushToWorker(self: *Self, preferred_worker: u8, job: VoiceChunkJob) bool {
+        if (self.n_workers == 0) return false;
+
+        const n_workers: usize = self.n_workers;
+        const start: usize = preferred_worker;
+        for (0..n_workers) |offset| {
+            const idx: usize = (start + offset) % n_workers;
+            if (self.deques[idx].push(job)) return true;
+        }
+        return false;
+    }
+
+    fn workerLoop(self: *Self, my_id: u8) void {
+        const my_idx: usize = my_id;
+        var steal_cursor: usize = my_idx;
+        var idle_spins: u32 = 0;
+
+        while (self.running.load(.acquire)) {
+            // Dispatch thread is the single owner/writer of `bottom` (push side).
+            // Workers consume via `steal` (top side): own queue first, then others.
+            if (self.deques[my_idx].steal()) |job| {
+                process_voice_chunk(job);
+                self.barrier.worker_done();
+                idle_spins = 0;
+                continue;
+            }
+
+            var stolen = false;
+            const n_workers: usize = self.n_workers;
+            const can_steal = self.steal_enabled.load(.acquire);
+            if (can_steal and n_workers > 1 and (idle_spins & 3) == 0) {
+                var offset: usize = 1;
+                while (offset < n_workers) : (offset += 1) {
+                    const victim: usize = (steal_cursor + offset) % n_workers;
+
+                    // Keep single remaining jobs local to reduce thrash under skewed loads.
+                    if (self.deques[victim].approx_len() <= 1) continue;
+
+                    if (self.deques[victim].steal()) |job| {
+                        _ = self.steal_events.fetchAdd(1, .acq_rel);
+                        process_voice_chunk(job);
+                        self.barrier.worker_done();
+                        idle_spins = 0;
+                        steal_cursor = victim;
+                        stolen = true;
+                        break;
+                    }
+                }
+            }
+
+            if (!stolen) {
+                idle_spins +%= 1;
+                if (idle_spins >= 256 and (idle_spins & 31) == 0) {
+                    std.Thread.yield() catch {};
+                } else {
+                    std.atomic.spinLoopHint();
+                }
+            }
+        }
+    }
+
+    fn process_voice_chunk(job: VoiceChunkJob) void {
+        const chunk_count: u8 = if (job.chunk_count == 0) 1 else job.chunk_count;
+
+        if (job.run) |run| {
+            if (job.ctx) |ctx| {
+                var idx: u8 = 0;
+                while (idx < chunk_count) : (idx += 1) {
+                    run(ctx, job.chunk_idx + idx, job.work_cycles);
+                }
+                return;
+            }
+        }
+
+        const work_cycles: u16 = if (job.work_cycles == 0) 64 else job.work_cycles;
+        var sink: u32 = 0;
+        var chunk: u8 = 0;
+        while (chunk < chunk_count) : (chunk += 1) {
+            const absolute_chunk = @as(u32, job.chunk_idx) + @as(u32, chunk);
+            sink = syntheticWork(sink ^ absolute_chunk, work_cycles);
+        }
+        std.mem.doNotOptimizeAway(&sink);
+    }
+};
 
 const StressMetrics = struct {
     elapsed_ns: u64,
@@ -384,6 +646,114 @@ fn benchContention(comptime STEALERS: usize) !ContentionMetrics {
     };
 }
 
+const PoolVerifyCtx = struct {
+    seen: []std.atomic.Value(u8),
+    processed: *std.atomic.Value(u32),
+    duplicates: *std.atomic.Value(bool),
+};
+
+fn initSeenSlice(seen: []std.atomic.Value(u8)) void {
+    for (seen) |*slot| {
+        slot.* = std.atomic.Value(u8).init(0);
+    }
+}
+
+fn recordChunkCallback(ctx_ptr: *anyopaque, chunk_idx: u8, work_cycles: u16) void {
+    const ctx: *PoolVerifyCtx = @ptrCast(@alignCast(ctx_ptr));
+
+    var spins: u16 = 0;
+    while (spins < work_cycles) : (spins += 1) {
+        std.atomic.spinLoopHint();
+    }
+
+    const idx: usize = chunk_idx;
+    if (idx >= ctx.seen.len) {
+        ctx.duplicates.store(true, .release);
+        return;
+    }
+
+    if (ctx.seen[idx].cmpxchgStrong(0, 1, .acq_rel, .acquire) != null) {
+        ctx.duplicates.store(true, .release);
+    }
+    _ = ctx.processed.fetchAdd(1, .acq_rel);
+}
+
+const PoolBenchPoint = struct {
+    workers: u8,
+    ns_per_block: u64,
+    speedup: f64,
+    efficiency: f64,
+    steal_rate: f64,
+};
+
+inline fn syntheticWork(seed: u32, work_cycles: u16) u32 {
+    var state = seed *% 1664525 +% 1013904223;
+    var i: u16 = 0;
+    while (i < work_cycles) : (i += 1) {
+        state = state *% 1664525 +% 1013904223;
+        state ^= state >> 13;
+    }
+    return state;
+}
+
+fn runSequentialSynthetic(blocks: usize, n_chunks: usize, work_cycles: u16) !u64 {
+    var sink: u32 = 0;
+    var timer = try std.time.Timer.start();
+    for (0..blocks) |_| {
+        for (0..n_chunks) |chunk_idx| {
+            sink = syntheticWork(sink ^ @as(u32, @intCast(chunk_idx)), work_cycles);
+        }
+    }
+    std.mem.doNotOptimizeAway(&sink);
+    return timer.read() / blocks;
+}
+
+fn benchThreadPoolPoint(workers: u8, blocks: usize, n_chunks: u8, work_cycles: u16, baseline_ns: u64) !PoolBenchPoint {
+    var pool: ThreadPool = .{};
+    try pool.init(workers);
+    defer pool.shutdown();
+
+    const prototype = VoiceChunkJob{
+        .chunk_idx = 0,
+        .work_cycles = work_cycles,
+        .ctx = null,
+        .run = null,
+    };
+
+    for (0..12) |_| {
+        _ = pool.dispatch_chunk_jobs(n_chunks, prototype);
+        pool.wait();
+    }
+
+    var total_ns: u64 = 0;
+    var total_steals: u64 = 0;
+    var total_jobs: u64 = 0;
+    for (0..blocks) |_| {
+        var timer = try std.time.Timer.start();
+        const dispatched = pool.dispatch_chunk_jobs(n_chunks, prototype);
+        pool.wait();
+        total_ns += timer.read();
+        total_steals += pool.current_steal_events();
+        total_jobs += dispatched;
+    }
+
+    const ns_per_block = total_ns / blocks;
+    const speedup = @as(f64, @floatFromInt(baseline_ns)) / @as(f64, @floatFromInt(ns_per_block));
+    const efficiency = speedup / @as(f64, @floatFromInt(workers));
+    const steal_rate = if (total_jobs == 0)
+        0.0
+    else
+        @as(f64, @floatFromInt(total_steals)) * 100.0 / @as(f64, @floatFromInt(total_jobs));
+
+    return .{
+        .workers = workers,
+        .ns_per_block = ns_per_block,
+        .speedup = speedup,
+        .efficiency = efficiency,
+        .steal_rate = steal_rate,
+    };
+}
+
 // ── Tests ─────────────────────────────────────────────────────────────
 
 test "AC-1: push(1,2,3), pop() returns 3 (LIFO)" {
@@ -518,4 +888,168 @@ test "AC-B1: Chase-Lev benchmarks" {
     try std.testing.expect(contention_2.success_pct > success_threshold_2_pct);
     try std.testing.expect(contention_4.success_pct > success_threshold_4_pct);
     try std.testing.expect(contention_8.success_pct > success_threshold_8_pct);
+}
+
+test "WP-025 AC-1: dispatch 8 chunks, barrier.wait returns, all chunks processed" {
+    var pool: ThreadPool = .{};
+    try pool.init(4);
+    defer pool.shutdown();
+
+    var seen: [8]std.atomic.Value(u8) = undefined;
+    initSeenSlice(&seen);
+
+    var processed = std.atomic.Value(u32).init(0);
+    var duplicates = std.atomic.Value(bool).init(false);
+    var ctx = PoolVerifyCtx{
+        .seen = seen[0..],
+        .processed = &processed,
+        .duplicates = &duplicates,
+    };
+
+    const dispatched = pool.dispatch_chunk_jobs(8, .{
+        .chunk_idx = 0,
+        .work_cycles = 128,
+        .ctx = &ctx,
+        .run = recordChunkCallback,
+    });
+    try std.testing.expectEqual(@as(u32, 8), dispatched);
+
+    pool.wait();
+
+    try std.testing.expectEqual(@as(u32, 8), processed.load(.acquire));
+    try std.testing.expect(!duplicates.load(.acquire));
+    for (seen) |slot| {
+        try std.testing.expectEqual(@as(u8, 1), slot.load(.acquire));
+    }
+}
+
+test "WP-025 AC-2: work-stealing finishes skewed 7-job load on 2 workers" {
+    var pool: ThreadPool = .{};
+    try pool.init(2);
+    defer pool.shutdown();
+
+    var steal_events_total: u32 = 0;
+    const rounds: usize = if (benchmark_enforced) 32 else 8;
+    for (0..rounds) |_| {
+        var seen: [7]std.atomic.Value(u8) = undefined;
+        initSeenSlice(&seen);
+
+        var processed = std.atomic.Value(u32).init(0);
+        var duplicates = std.atomic.Value(bool).init(false);
+        var ctx = PoolVerifyCtx{
+            .seen = seen[0..],
+            .processed = &processed,
+            .duplicates = &duplicates,
+        };
+
+        const dispatched = pool.dispatch_chunk_jobs_skewed(7, 0, .{
+            .chunk_idx = 0,
+            .work_cycles = 4096,
+            .ctx = &ctx,
+            .run = recordChunkCallback,
+        });
+        try std.testing.expectEqual(@as(u32, 7), dispatched);
+
+        pool.wait();
+
+        try std.testing.expectEqual(@as(u32, 7), processed.load(.acquire));
+        try std.testing.expect(!duplicates.load(.acquire));
+        for (seen) |slot| {
+            try std.testing.expectEqual(@as(u8, 1), slot.load(.acquire));
+        }
+
+        steal_events_total += pool.current_steal_events();
+    }
+    try std.testing.expect(steal_events_total > 0);
+}
+
+test "WP-025 AC-N1: shutdown terminates without deadlock within 5s" {
+    var pool: ThreadPool = .{};
+    try pool.init(4);
+
+    _ = pool.dispatch_chunk_jobs(64, .{
+        .chunk_idx = 0,
+        .work_cycles = 512,
+        .ctx = null,
+        .run = null,
+    });
+
+    var timer = try std.time.Timer.start();
+    pool.shutdown();
+    try std.testing.expect(timer.read() < 5 * std.time.ns_per_s);
+}
+
+test "WP-025 AC-N2: thread pool has fixed-size storage and no allocator field" {
+    comptime {
+        const fields = @typeInfo(ThreadPool).@"struct".fields;
+        for (fields) |field| {
+            if (std.mem.indexOf(u8, field.name, "alloc") != null) {
+                @compileError("ThreadPool must not contain allocator fields");
+            }
+        }
+    }
+
+    try std.testing.expect(true);
+    try std.testing.expectEqual(@as(usize, MAX_WORKERS), @typeInfo(@TypeOf((@as(ThreadPool, .{})).deques)).array.len);
+}
+
+test "WP-025 AC-B1: thread-pool scaling benchmark" {
+    const blocks: usize = if (benchmark_enforced) 180 else 6;
+    const n_chunks: u8 = if (benchmark_enforced) 64 else 16;
+    const work_cycles: u16 = if (benchmark_enforced) 3072 else 24;
+
+    const baseline_ns = try runSequentialSynthetic(blocks, n_chunks, work_cycles);
+    const points = [_]PoolBenchPoint{
+        try benchThreadPoolPoint(1, blocks, n_chunks, work_cycles, baseline_ns),
+        try benchThreadPoolPoint(2, blocks, n_chunks, work_cycles, baseline_ns),
+        try benchThreadPoolPoint(4, blocks, n_chunks, work_cycles, baseline_ns),
+        try benchThreadPoolPoint(8, blocks, n_chunks, work_cycles, baseline_ns),
+    };
+
+    std.debug.print(
+        "\n  [WP-025] Thread-pool scaling ({d} chunks, work_cycles={d}, blocks={d})\n" ++
+            "    baseline (single-thread synthetic): {d}ns/block\n",
+        .{ n_chunks, work_cycles, blocks, baseline_ns },
+    );
+    std.debug.print("    | Workers | ns/block | Speedup | Efficiency | Steal-Rate |\n", .{});
+    std.debug.print("    |---------|----------|---------|------------|------------|\n", .{});
+    for (points) |point| {
+        std.debug.print("    | {d:7} | {d:8} | {d:7.2}x | {d:9.1}% | {d:9.1}% |\n", .{
+            point.workers,
+            point.ns_per_block,
+            point.speedup,
+            point.efficiency * 100.0,
+            point.steal_rate,
+        });
+    }
+
+    const p1 = points[0];
+    const p4 = points[2];
+    const p8 = points[3];
+    const p4_pool_speedup = @as(f64, @floatFromInt(p1.ns_per_block)) / @as(f64, @floatFromInt(p4.ns_per_block));
+    const p4_pool_efficiency = p4_pool_speedup / 4.0;
+
+    std.debug.print("    pool-baseline speedup (1->4 workers): {d:.2}x | efficiency: {d:.1}%\n", .{
+        p4_pool_speedup,
+        p4_pool_efficiency * 100.0,
+    });
+
+    if (benchmark_enforced) {
+        // Dual-system thresholds from measured ReleaseFast baselines (WP-025):
+        // TODO: fill after first full baseline run (remote + local znver3).
+        // Initial guard-rails keep AC-B1 meaningful in CI while avoiding flaky oversubscription gates.
+        const ns_threshold: u64 = 550_000;
+        const speedup_threshold: f64 = 1.20;
+        const efficiency_threshold: f64 = 0.25;
+        const steal_rate_max_pct: f64 = 20.0;
+
+        // Gate on 4-worker point for stable CI on a 4-core build host.
+        try std.testing.expect(p4.ns_per_block < ns_threshold);
+        try std.testing.expect(p4_pool_speedup > speedup_threshold);
+        try std.testing.expect(p4_pool_efficiency > efficiency_threshold);
+        try std.testing.expect(p8.steal_rate < steal_rate_max_pct);
+    } else {
+        // Debug mode: keep this benchmark informative and lightweight only.
+        try std.testing.expect(points[0].ns_per_block > 0);
+    }
 }
