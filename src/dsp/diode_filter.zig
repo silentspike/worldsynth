@@ -163,9 +163,9 @@ test "AC-N1: f64 integrators" {
     try std.testing.expectEqual(@as(f64, 0.0), z_val);
 }
 
-test "AC-N2: no heap (no Allocator)" {
-    // DiodeFilter.init takes only sample_rate — no Allocator parameter.
-    // If this compiles, no Allocator is needed.
+test "AC-N2: no heap allocation in API" {
+    // DiodeFilter.init takes only sample_rate.
+    // If this compiles, the filter API does not require heap setup.
     const diode = DiodeFilter.init(44100.0);
     try std.testing.expect(diode.sample_rate == 44100.0);
 }

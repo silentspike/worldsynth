@@ -143,49 +143,32 @@ test "AC-1: phaser creates notches in spectrum" {
     const sr: f32 = 44100.0;
     var phaser = Phaser4.init(sr);
     phaser.set_base_freq(1000.0);
-    phaser.set_mix(1.0); // fully wet to see allpass effect clearly
+    phaser.set_mix(0.5); // dry/wet mix creates the characteristic notch comb
 
-    // Generate white noise
-    const num_samples = 8192;
-    var input: [num_samples]f32 = undefined;
-    var output: [num_samples]f32 = undefined;
-    var rng = std.Random.DefaultPrng.init(42);
-    const random = rng.random();
-    for (&input) |*s| {
-        s.* = random.float(f32) * 2.0 - 1.0;
+    // Use the impulse response to measure the deterministic frequency response.
+    // For a fixed LFO value, the phaser is linear and time-invariant.
+    const num_samples = 4096;
+    var response: [num_samples]f32 = .{0.0} ** num_samples;
+    response[0] = phaser.process_sample(1.0, 0.5);
+    for (response[1..]) |*s| {
+        s.* = phaser.process_sample(0.0, 0.5);
     }
 
-    // Process with fixed LFO
-    for (input, &output) |s, *o| {
-        o.* = phaser.process_sample(s, 0.0);
+    const test_freqs = [_]f32{ 200, 400, 600, 800, 1000, 1200, 1600, 2000, 2600, 3200, 4000, 5000 };
+    var mags: [test_freqs.len]f32 = undefined;
+    for (test_freqs, 0..) |freq, i| {
+        mags[i] = goertzel_magnitude(&response, freq, sr);
     }
 
-    // Measure input magnitude at test frequencies for comparison
-    const mag_in_1k = goertzel_magnitude(&input, 1000.0, sr);
-    const mag_out_1k = goertzel_magnitude(&output, 1000.0, sr);
-
-    // At the allpass center frequency, phase cancellation creates a notch
-    // The wet-only output at the notch frequency should be attenuated vs input
-    // (allpass at center freq inverts phase → cancellation when mixed)
-    // With mix=1.0 (wet only), output magnitude should differ from input
-    // as the allpass chain reshapes the spectrum
-    try std.testing.expect(mag_in_1k > 0.001); // input has energy
-    _ = mag_out_1k; // output may be attenuated or boosted depending on phase
-
-    // Verify spectral shape differs from flat input (phaser modifies spectrum)
-    var input_energy: f64 = 0.0;
-    var output_energy: f64 = 0.0;
-    for (input, output) |i, o| {
-        input_energy += @as(f64, i) * @as(f64, i);
-        output_energy += @as(f64, o) * @as(f64, o);
+    var found_notch = false;
+    for (1..mags.len - 1) |i| {
+        if (mags[i] < mags[i - 1] * 0.85 and mags[i] < mags[i + 1] * 0.85) {
+            found_notch = true;
+            break;
+        }
     }
-    // Output should have energy (not silence)
-    try std.testing.expect(output_energy > 0.0);
-    // With allpass-only (wet=1.0), total energy is preserved (allpass is unity gain)
-    // Allow 20% tolerance for floating-point
-    const ratio = output_energy / input_energy;
-    try std.testing.expect(ratio > 0.8);
-    try std.testing.expect(ratio < 1.2);
+
+    try std.testing.expect(found_notch);
 }
 
 test "AC-N1: no NaN/Inf during LFO sweep -1 to +1" {
@@ -318,9 +301,12 @@ test "benchmark: phaser 4 stages static" {
     }
     const ns_per_block = timer.read() / iterations;
 
-    // Debug: ~8000-15000ns, ReleaseFast: ~1500-2500ns
-    const budget_ns: u64 = 25000;
+    // Direct module tests are noisier than full-suite runs on zig-remote.
+    // Keep a realistic debug regression gate while ReleaseFast remains
+    // verified separately via issue evidence.
+    const budget_ns: u64 = 50000;
     std.debug.print("\n[WP-034] phaser 4-stage static: {}ns/block (budget: {}ns)\n", .{ ns_per_block, budget_ns });
+    try std.testing.expect(ns_per_block < budget_ns);
 }
 
 test "benchmark: phaser 8 stages static" {
@@ -346,8 +332,9 @@ test "benchmark: phaser 8 stages static" {
     }
     const ns_per_block = timer.read() / iterations;
 
-    const budget_ns: u64 = 50000;
+    const budget_ns: u64 = 80000;
     std.debug.print("[WP-034] phaser 8-stage static: {}ns/block (budget: {}ns)\n", .{ ns_per_block, budget_ns });
+    try std.testing.expect(ns_per_block < budget_ns);
 }
 
 test "benchmark: phaser 8 stages modulated" {
@@ -379,6 +366,7 @@ test "benchmark: phaser 8 stages modulated" {
     }
     const ns_per_block = timer.read() / iterations;
 
-    const budget_ns: u64 = 80000;
+    const budget_ns: u64 = 100000;
     std.debug.print("[WP-034] phaser 8-stage modulated: {}ns/block (budget: {}ns)\n", .{ ns_per_block, budget_ns });
+    try std.testing.expect(ns_per_block < budget_ns);
 }

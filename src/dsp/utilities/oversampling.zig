@@ -11,11 +11,11 @@ pub const BLOCK_SIZE: usize = 128;
 
 // -- Comptime FIR coefficient design ------------------------------------------
 
-const FILTER_ORDER = 23;
-const HALF_ORDER = FILTER_ORDER / 2; // 11 (center tap index)
+const FILTER_ORDER = 47;
+const HALF_ORDER = FILTER_ORDER / 2; // 23 (center tap index)
 
 // Ring buffer: next power of 2 >= FILTER_ORDER for fast masking.
-const RING_SIZE = 32;
+const RING_SIZE = 64;
 const RING_MASK = RING_SIZE - 1;
 
 /// Comptime modified Bessel function I₀(x) via power series.
@@ -144,11 +144,12 @@ pub const Oversampler2x = struct {
     }
 
     /// Downsample by 2x: FIR anti-alias filter + decimation.
-    /// push() skips FIR computation for discarded samples.
+    /// Emit the even polyphase output so the full up->down roundtrip
+    /// has an integer low-rate delay instead of an extra half-sample offset.
     pub fn downsample_2x(self: *Self, in_buf: *const [BLOCK_SIZE * 2]f32, out_buf: *[BLOCK_SIZE]f32) void {
         for (out_buf, 0..) |*out, i| {
-            self.down_filter.push(in_buf[i * 2]);
-            out.* = self.down_filter.tick(in_buf[i * 2 + 1]);
+            out.* = self.down_filter.tick(in_buf[i * 2]);
+            self.down_filter.push(in_buf[i * 2 + 1]);
         }
     }
 
@@ -200,14 +201,14 @@ pub const Oversampler4x = struct {
         // Stage 2: 4x → 2x (BLOCK_SIZE*4 → BLOCK_SIZE*2)
         var intermediate: [BLOCK_SIZE * 2]f32 = undefined;
         for (&intermediate, 0..) |*out, i| {
-            self.stage2_down.push(in_buf[i * 2]);
-            out.* = self.stage2_down.tick(in_buf[i * 2 + 1]);
+            out.* = self.stage2_down.tick(in_buf[i * 2]);
+            self.stage2_down.push(in_buf[i * 2 + 1]);
         }
 
         // Stage 1: 2x → 1x (BLOCK_SIZE*2 → BLOCK_SIZE)
         for (out_buf, 0..) |*out, i| {
-            self.stage1_down.push(intermediate[i * 2]);
-            out.* = self.stage1_down.tick(intermediate[i * 2 + 1]);
+            out.* = self.stage1_down.tick(intermediate[i * 2]);
+            self.stage1_down.push(intermediate[i * 2 + 1]);
         }
     }
 
@@ -272,35 +273,70 @@ test "AC-1: 2x oversampling preserves 440Hz sine, no aliasing at 20kHz" {
 
 test "AC-2: upsample -> downsample roundtrip preserves signal" {
     const sr: f32 = 44100.0;
-    var os = Oversampler2x.init();
+    const num_blocks = 32;
+    const total_samples = BLOCK_SIZE * num_blocks;
 
-    var input: [BLOCK_SIZE]f32 = undefined;
+    // First measure the effective integer sample delay of the roundtrip
+    // using an impulse response. This lets us compare the reconstructed
+    // signal sample-accurately instead of only via RMS.
+    var os_delay = Oversampler2x.init();
+    var impulse_input: [BLOCK_SIZE]f32 = .{0.0} ** BLOCK_SIZE;
     var upsampled: [BLOCK_SIZE * 2]f32 = undefined;
     var output: [BLOCK_SIZE]f32 = undefined;
+    var impulse_response: [total_samples]f32 = .{0.0} ** total_samples;
 
-    // Settle: 20 blocks of 440Hz sine
+    impulse_input[0] = 1.0;
+    for (0..num_blocks) |block_idx| {
+        const input_block = if (block_idx == 0) impulse_input else [_]f32{0.0} ** BLOCK_SIZE;
+        os_delay.upsample_2x(&input_block, &upsampled);
+        os_delay.downsample_2x(&upsampled, &output);
+        @memcpy(impulse_response[block_idx * BLOCK_SIZE ..][0..BLOCK_SIZE], output[0..]);
+    }
+
+    var delay: usize = 0;
+    var peak: f32 = 0.0;
+    for (impulse_response, 0..) |sample, i| {
+        if (@abs(sample) > peak) {
+            peak = @abs(sample);
+            delay = i;
+        }
+    }
+    try std.testing.expect(peak > 0.1);
+
+    // Now verify the aligned roundtrip error on a deterministic passband signal.
+    var os = Oversampler2x.init();
+    var original: [total_samples]f32 = undefined;
+    var reconstructed: [total_samples]f32 = undefined;
     var phase: f32 = 0.0;
-    for (0..20) |_| {
+
+    for (0..num_blocks) |block_idx| {
+        var input: [BLOCK_SIZE]f32 = undefined;
         for (&input) |*s| {
             s.* = @sin(2.0 * std.math.pi * phase);
             phase += 440.0 / sr;
             if (phase >= 1.0) phase -= 1.0;
         }
+
+        @memcpy(original[block_idx * BLOCK_SIZE ..][0..BLOCK_SIZE], input[0..]);
         os.upsample_2x(&input, &upsampled);
         os.downsample_2x(&upsampled, &output);
+        @memcpy(reconstructed[block_idx * BLOCK_SIZE ..][0..BLOCK_SIZE], output[0..]);
     }
 
-    // After settling, output RMS should match input RMS.
-    // 440Hz sine RMS = 1/sqrt(2) ≈ 0.707.
-    var rms_sum: f64 = 0.0;
-    for (output) |o| {
-        rms_sum += @as(f64, o) * @as(f64, o);
+    var max_err: f32 = 0.0;
+    var err_sq_sum: f64 = 0.0;
+    for (0..total_samples - delay) |i| {
+        const err = @abs(reconstructed[i + delay] - original[i]);
+        if (err > max_err) max_err = err;
+        err_sq_sum += @as(f64, err) * @as(f64, err);
     }
-    const rms_out = @sqrt(rms_sum / @as(f64, BLOCK_SIZE));
+    const rms_err = @sqrt(err_sq_sum / @as(f64, @floatFromInt(total_samples - delay)));
 
-    // RMS should be close to 0.707 (within ±0.1 for roundtrip accuracy < 0.01)
-    try std.testing.expect(rms_out > 0.5);
-    try std.testing.expect(rms_out < 0.8);
+    std.debug.print("\n[WP-088] roundtrip delay={} samples, max_err={d:.6}, rms_err={d:.6}\n", .{
+        delay, max_err, rms_err,
+    });
+
+    try std.testing.expect(rms_err < 0.03);
 }
 
 test "AC-N1: no DC offset after oversampling roundtrip" {
