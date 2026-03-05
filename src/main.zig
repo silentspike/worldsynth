@@ -19,6 +19,7 @@ pub const dsp = struct {
     pub const drift = @import("dsp/drift.zig");
     pub const sub_harmonics = @import("dsp/sub_harmonics.zig");
     pub const env_follower = @import("dsp/env_follower.zig");
+    pub const pitch_follower = @import("dsp/pitch_follower.zig");
 };
 
 pub const io = struct {
@@ -68,6 +69,7 @@ test {
     _ = dsp.drift;
     _ = dsp.sub_harmonics;
     _ = dsp.env_follower;
+    _ = dsp.pitch_follower;
     _ = io.osc;
     _ = io.midi_learn;
     _ = io.midi;
