@@ -17,7 +17,6 @@ jobs:
   preflight:
     runs-on:
       - self-hosted
-      - worldsynth
       - ${{ github.event_name == 'pull_request' && (github.base_ref == 'sprint-2' && 'worldsynth-s2' || github.base_ref == 'sprint-3' && 'worldsynth-s3' || github.base_ref == 'sprint-4' && 'worldsynth-s4' || 'worldsynth-s1') || (github.ref_name == 'sprint-2' && 'worldsynth-s2' || github.ref_name == 'sprint-3' && 'worldsynth-s3' || github.ref_name == 'sprint-4' && 'worldsynth-s4' || 'worldsynth-s1') }}
     outputs:
       tag: ${{ steps.meta.outputs.tag }}
@@ -106,7 +105,6 @@ jobs:
     needs: preflight
     runs-on:
       - self-hosted
-      - worldsynth
       - ${{ github.event_name == 'pull_request' && (github.base_ref == 'sprint-2' && 'worldsynth-s2' || github.base_ref == 'sprint-3' && 'worldsynth-s3' || github.base_ref == 'sprint-4' && 'worldsynth-s4' || 'worldsynth-s1') || (github.ref_name == 'sprint-2' && 'worldsynth-s2' || github.ref_name == 'sprint-3' && 'worldsynth-s3' || github.ref_name == 'sprint-4' && 'worldsynth-s4' || 'worldsynth-s1') }}
     steps:
       - uses: actions/checkout@v6
@@ -165,7 +163,6 @@ jobs:
     needs: [preflight, build]
     runs-on:
       - self-hosted
-      - worldsynth
       - ${{ github.event_name == 'pull_request' && (github.base_ref == 'sprint-2' && 'worldsynth-s2' || github.base_ref == 'sprint-3' && 'worldsynth-s3' || github.base_ref == 'sprint-4' && 'worldsynth-s4' || 'worldsynth-s1') || (github.ref_name == 'sprint-2' && 'worldsynth-s2' || github.ref_name == 'sprint-3' && 'worldsynth-s3' || github.ref_name == 'sprint-4' && 'worldsynth-s4' || 'worldsynth-s1') }}
     steps:
       - uses: actions/checkout@v6
@@ -235,7 +232,6 @@ jobs:
     needs: [preflight, build]
     runs-on:
       - self-hosted
-      - worldsynth
       - ${{ github.event_name == 'pull_request' && (github.base_ref == 'sprint-2' && 'worldsynth-s2' || github.base_ref == 'sprint-3' && 'worldsynth-s3' || github.base_ref == 'sprint-4' && 'worldsynth-s4' || 'worldsynth-s1') || (github.ref_name == 'sprint-2' && 'worldsynth-s2' || github.ref_name == 'sprint-3' && 'worldsynth-s3' || github.ref_name == 'sprint-4' && 'worldsynth-s4' || 'worldsynth-s1') }}
     steps:
       - uses: actions/checkout@v6
