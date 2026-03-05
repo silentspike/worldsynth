@@ -41,6 +41,8 @@ pub const io = struct {
     pub const jack = @import("io/jack.zig");
     pub const pipewire = @import("io/pipewire.zig");
     pub const onnx_runtime = @import("io/onnx_runtime.zig");
+    pub const cuda = @import("io/cuda.zig");
+    pub const tensorrt = @import("io/tensorrt.zig");
     pub const audio_backend = @import("io/audio_backend.zig");
     pub const osc = @import("io/osc.zig");
     pub const midi_learn = @import("io/midi_learn.zig");
@@ -113,6 +115,8 @@ test {
     _ = io.jack;
     _ = io.pipewire;
     _ = io.onnx_runtime;
+    _ = io.cuda;
+    _ = io.tensorrt;
     _ = io.audio_backend;
     _ = dsp.voice;
     _ = dsp.drift;

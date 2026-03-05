@@ -6,12 +6,14 @@ pub fn build(b: *std.Build) void {
 
     // ── Feature Flags ──────────────────────────────────────────────
     const enable_cuda = b.option(bool, "enable_cuda", "Enable CUDA GPU acceleration") orelse false;
+    const enable_tensorrt = b.option(bool, "enable_tensorrt", "Enable TensorRT acceleration for neural inference") orelse false;
     const enable_pipewire = b.option(bool, "pipewire", "Enable PipeWire audio backend") orelse false;
     const enable_jack = b.option(bool, "jack", "Enable JACK audio backend") orelse false;
     const enable_neural = b.option(bool, "enable_neural", "Enable ONNX Runtime neural engine bindings") orelse false;
 
     const options = b.addOptions();
     options.addOption(bool, "enable_cuda", enable_cuda);
+    options.addOption(bool, "enable_tensorrt", enable_tensorrt);
     options.addOption(bool, "enable_pipewire", enable_pipewire);
     options.addOption(bool, "enable_jack", enable_jack);
     options.addOption(bool, "enable_neural", enable_neural);
@@ -27,8 +29,14 @@ pub fn build(b: *std.Build) void {
     // ── Optional System Libraries ──────────────────────────────────
     // JACK/PipeWire shared libraries need libc (pthreads, TLS init).
     // Without libc, Zig skips glibc startup → segfault in JACK init.
-    if (enable_jack or enable_pipewire or enable_neural) {
+    if (enable_jack or enable_pipewire or enable_neural or enable_cuda or enable_tensorrt) {
         root_mod.link_libc = true;
+    }
+    if (enable_cuda) {
+        root_mod.linkSystemLibrary("cuda", .{});
+    }
+    if (enable_tensorrt) {
+        root_mod.linkSystemLibrary("nvinfer", .{});
     }
     if (enable_jack) {
         root_mod.linkSystemLibrary("jack", .{});
@@ -65,8 +73,14 @@ pub fn build(b: *std.Build) void {
     });
     test_mod.addOptions("build_options", options);
 
-    if (enable_jack or enable_pipewire or enable_neural) {
+    if (enable_jack or enable_pipewire or enable_neural or enable_cuda or enable_tensorrt) {
         test_mod.link_libc = true;
+    }
+    if (enable_cuda) {
+        test_mod.linkSystemLibrary("cuda", .{});
+    }
+    if (enable_tensorrt) {
+        test_mod.linkSystemLibrary("nvinfer", .{});
     }
     if (enable_jack) {
         test_mod.linkSystemLibrary("jack", .{});
