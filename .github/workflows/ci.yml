@@ -17,7 +17,15 @@ concurrency:
 jobs:
   # ── Gate: Changes Detection + File Existence ────────────────────
   changes:
-    runs-on: [self-hosted, worldsynth]
+    # Avoid duplicate full CI on sprint integration PRs: the same SHA is
+    # already validated on sprint push; PR to main keeps only lightweight PR gates.
+    if: >-
+      !(github.event_name == 'pull_request' &&
+      github.base_ref == 'main' &&
+      startsWith(github.head_ref, 'sprint-'))
+    runs-on:
+      - self-hosted
+      - ${{ github.event_name == 'pull_request' && (github.base_ref == 'sprint-2' && 'worldsynth-s2' || github.base_ref == 'sprint-3' && 'worldsynth-s3' || github.base_ref == 'sprint-4' && 'worldsynth-s4' || 'worldsynth-s1') || (github.ref_name == 'sprint-2' && 'worldsynth-s2' || github.ref_name == 'sprint-3' && 'worldsynth-s3' || github.ref_name == 'sprint-4' && 'worldsynth-s4' || 'worldsynth-s1') }}
     outputs:
       zig: ${{ steps.filter.outputs.zig }}
       ui: ${{ steps.filter.outputs.ui }}
@@ -55,7 +63,9 @@ jobs:
 
   # ── PR Gate: Lint (always runs) ──────────────────────────────────
   lint:
-    runs-on: [self-hosted, worldsynth]
+    runs-on:
+      - self-hosted
+      - ${{ github.event_name == 'pull_request' && (github.base_ref == 'sprint-2' && 'worldsynth-s2' || github.base_ref == 'sprint-3' && 'worldsynth-s3' || github.base_ref == 'sprint-4' && 'worldsynth-s4' || 'worldsynth-s1') || (github.ref_name == 'sprint-2' && 'worldsynth-s2' || github.ref_name == 'sprint-3' && 'worldsynth-s3' || github.ref_name == 'sprint-4' && 'worldsynth-s4' || 'worldsynth-s1') }}
     needs: [changes]
     steps:
       - uses: actions/checkout@v6
@@ -73,7 +83,7 @@ jobs:
         if: (needs.changes.outputs.zig == 'true' || github.event_name == 'push') && needs.changes.outputs.has_zig == 'true'
         uses: mlugg/setup-zig@v2
         with:
-          version: 0.14.1
+          version: 0.15.2
 
       - name: Run zig fmt --check
         if: (needs.changes.outputs.zig == 'true' || github.event_name == 'push') && needs.changes.outputs.has_zig == 'true'
@@ -89,7 +99,9 @@ jobs:
 
   # ── PR Gate: Zig Build + Test ────────────────────────────────────
   build-zig:
-    runs-on: [self-hosted, worldsynth]
+    runs-on:
+      - self-hosted
+      - ${{ github.event_name == 'pull_request' && (github.base_ref == 'sprint-2' && 'worldsynth-s2' || github.base_ref == 'sprint-3' && 'worldsynth-s3' || github.base_ref == 'sprint-4' && 'worldsynth-s4' || 'worldsynth-s1') || (github.ref_name == 'sprint-2' && 'worldsynth-s2' || github.ref_name == 'sprint-3' && 'worldsynth-s3' || github.ref_name == 'sprint-4' && 'worldsynth-s4' || 'worldsynth-s1') }}
     if: >-
       needs.changes.outputs.has_zig == 'true' &&
       (needs.changes.outputs.zig == 'true' ||
@@ -103,7 +115,7 @@ jobs:
 
       - uses: mlugg/setup-zig@v2
         with:
-          version: 0.14.1
+          version: 0.15.2
 
       # Zig cache: .zig-cache/ and zig-cache/ directories
       - uses: actions/cache@v4
@@ -136,7 +148,9 @@ jobs:
 
   # ── PR Gate: UI Build + TypeCheck ────────────────────────────────
   build-ui:
-    runs-on: [self-hosted, worldsynth]
+    runs-on:
+      - self-hosted
+      - ${{ github.event_name == 'pull_request' && (github.base_ref == 'sprint-2' && 'worldsynth-s2' || github.base_ref == 'sprint-3' && 'worldsynth-s3' || github.base_ref == 'sprint-4' && 'worldsynth-s4' || 'worldsynth-s1') || (github.ref_name == 'sprint-2' && 'worldsynth-s2' || github.ref_name == 'sprint-3' && 'worldsynth-s3' || github.ref_name == 'sprint-4' && 'worldsynth-s4' || 'worldsynth-s1') }}
     if: >-
       needs.changes.outputs.has_ui == 'true' &&
       (needs.changes.outputs.ui == 'true' ||
@@ -167,7 +181,9 @@ jobs:
 
   # ── PR Gate: Security ────────────────────────────────────────────
   security:
-    runs-on: [self-hosted, worldsynth]
+    runs-on:
+      - self-hosted
+      - ${{ github.event_name == 'pull_request' && (github.base_ref == 'sprint-2' && 'worldsynth-s2' || github.base_ref == 'sprint-3' && 'worldsynth-s3' || github.base_ref == 'sprint-4' && 'worldsynth-s4' || 'worldsynth-s1') || (github.ref_name == 'sprint-2' && 'worldsynth-s2' || github.ref_name == 'sprint-3' && 'worldsynth-s3' || github.ref_name == 'sprint-4' && 'worldsynth-s4' || 'worldsynth-s1') }}
     if: >-
       needs.changes.outputs.zig == 'true' ||
       needs.changes.outputs.ui == 'true' ||

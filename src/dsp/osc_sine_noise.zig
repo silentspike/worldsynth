@@ -23,13 +23,24 @@ pub inline fn u32_to_f32(val: u32) f32 {
 
 /// Process a block of noise samples. State is stored as u32 in the phase f32.
 /// If state is 0 (e.g. from phase=0.0), it is seeded with a fixed non-zero value.
-pub fn noise_block(phase_ptr: *f32, out_buf: *[128]f32) void {
+pub inline fn noise_block(phase_ptr: *f32, out_buf: *[128]f32) void {
     var state: u32 = @bitCast(phase_ptr.*);
     // Guard: xorshift32 degenerates to 0 with zero state
     if (state == 0) state = 0x12345678;
-    for (out_buf) |*sample| {
+
+    var i: usize = 0;
+    while (i < out_buf.len) : (i += 4) {
         state = xorshift32(state);
-        sample.* = u32_to_f32(state);
+        out_buf[i] = u32_to_f32(state);
+
+        state = xorshift32(state);
+        out_buf[i + 1] = u32_to_f32(state);
+
+        state = xorshift32(state);
+        out_buf[i + 2] = u32_to_f32(state);
+
+        state = xorshift32(state);
+        out_buf[i + 3] = u32_to_f32(state);
     }
     phase_ptr.* = @bitCast(state);
 }

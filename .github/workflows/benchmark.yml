@@ -7,26 +7,25 @@ on:
       - 'src/**/*.zig'
       - 'build.zig'
       - 'build.zig.zon'
-  pull_request:
-    branches: [sprint-1, sprint-2, sprint-3, sprint-4]
-    paths:
-      - 'src/**/*.zig'
-      - 'build.zig'
-      - 'build.zig.zon'
 
 permissions:
-  pull-requests: write
   contents: read
+
+concurrency:
+  group: benchmark-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   benchmark:
-    runs-on: [self-hosted, worldsynth]
+    runs-on:
+      - self-hosted
+      - ${{ github.ref_name == 'sprint-2' && 'worldsynth-s2' || github.ref_name == 'sprint-3' && 'worldsynth-s3' || github.ref_name == 'sprint-4' && 'worldsynth-s4' || 'worldsynth-s1' }}
     steps:
       - uses: actions/checkout@v4
 
       - uses: mlugg/setup-zig@v2
         with:
-          version: "0.14.1"
+          version: "0.15.2"
 
       - name: Run benchmarks
         id: bench
