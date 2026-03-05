@@ -1,0 +1,13 @@
+# CI parallel shard set (functional / non-benchmark focused).
+# Benchmarked shards are moved to scripts/test-shards-ci-bench-serial.txt and
+# run with WS_TEST_JOBS=1 to keep timing assertions isolated.
+
+main.test_0
+io.jack.test
+io.pipewire.test
+io.onnx_runtime.test
+io.audio_backend.test
+dsp.oscillator.test
+dsp.osc_sine_noise.test
+dsp.filter.test
+dsp.ladder.test
