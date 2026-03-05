@@ -45,9 +45,10 @@ const ladder = @import("../dsp/ladder.zig");
 /// Threshold enforcement only in release builds.
 const enforce = builtin.mode == .ReleaseFast or builtin.mode == .ReleaseSmall;
 
-const RUNS: usize = 5;
-const WARMUP: usize = 1_000;
-const ITERS: usize = 10_000;
+// Keep PR/Debug runs fast while preserving full statistical depth in ReleaseFast.
+const RUNS: usize = if (enforce) 5 else 3;
+const WARMUP: usize = if (enforce) 1_000 else 200;
+const ITERS: usize = if (enforce) 10_000 else 2_000;
 const BLOCK: usize = 128;
 
 /// Audio block budget: 128 samples @ 44.1kHz = 2,902,494 ns
