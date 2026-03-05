@@ -21,7 +21,7 @@ jobs:
     timeout-minutes: 30
     runs-on:
       - self-hosted
-      - ${{ github.ref_name == 'sprint-2' && 'worldsynth-s2' || github.ref_name == 'sprint-3' && 'worldsynth-s3' || github.ref_name == 'sprint-4' && 'worldsynth-s4' || 'worldsynth-s1' }}
+      - ${{ github.ref_name == 'sprint-2' && 'worldsynth-s2-bench' || github.ref_name == 'sprint-3' && 'worldsynth-s3-bench' || github.ref_name == 'sprint-4' && 'worldsynth-s4-bench' || 'worldsynth-s1-bench' }}
     steps:
       - uses: actions/checkout@v4
 

@@ -25,7 +25,7 @@ jobs:
       startsWith(github.head_ref, 'sprint-'))
     runs-on:
       - self-hosted
-      - ${{ github.event_name == 'pull_request' && (github.base_ref == 'sprint-2' && 'worldsynth-s2' || github.base_ref == 'sprint-3' && 'worldsynth-s3' || github.base_ref == 'sprint-4' && 'worldsynth-s4' || 'worldsynth-s1') || (github.ref_name == 'sprint-2' && 'worldsynth-s2' || github.ref_name == 'sprint-3' && 'worldsynth-s3' || github.ref_name == 'sprint-4' && 'worldsynth-s4' || 'worldsynth-s1') }}
+      - ${{ github.event_name == 'pull_request' && (github.base_ref == 'sprint-2' && 'worldsynth-s2-ci' || github.base_ref == 'sprint-3' && 'worldsynth-s3-ci' || github.base_ref == 'sprint-4' && 'worldsynth-s4-ci' || 'worldsynth-s1-ci') || (github.ref_name == 'sprint-2' && 'worldsynth-s2-ci' || github.ref_name == 'sprint-3' && 'worldsynth-s3-ci' || github.ref_name == 'sprint-4' && 'worldsynth-s4-ci' || 'worldsynth-s1-ci') }}
     outputs:
       zig: ${{ steps.filter.outputs.zig }}
       ui: ${{ steps.filter.outputs.ui }}
@@ -65,7 +65,7 @@ jobs:
   lint:
     runs-on:
       - self-hosted
-      - ${{ github.event_name == 'pull_request' && (github.base_ref == 'sprint-2' && 'worldsynth-s2' || github.base_ref == 'sprint-3' && 'worldsynth-s3' || github.base_ref == 'sprint-4' && 'worldsynth-s4' || 'worldsynth-s1') || (github.ref_name == 'sprint-2' && 'worldsynth-s2' || github.ref_name == 'sprint-3' && 'worldsynth-s3' || github.ref_name == 'sprint-4' && 'worldsynth-s4' || 'worldsynth-s1') }}
+      - ${{ github.event_name == 'pull_request' && (github.base_ref == 'sprint-2' && 'worldsynth-s2-ci' || github.base_ref == 'sprint-3' && 'worldsynth-s3-ci' || github.base_ref == 'sprint-4' && 'worldsynth-s4-ci' || 'worldsynth-s1-ci') || (github.ref_name == 'sprint-2' && 'worldsynth-s2-ci' || github.ref_name == 'sprint-3' && 'worldsynth-s3-ci' || github.ref_name == 'sprint-4' && 'worldsynth-s4-ci' || 'worldsynth-s1-ci') }}
     needs: [changes]
     steps:
       - uses: actions/checkout@v6
@@ -101,7 +101,7 @@ jobs:
   build-zig:
     runs-on:
       - self-hosted
-      - ${{ github.event_name == 'pull_request' && (github.base_ref == 'sprint-2' && 'worldsynth-s2' || github.base_ref == 'sprint-3' && 'worldsynth-s3' || github.base_ref == 'sprint-4' && 'worldsynth-s4' || 'worldsynth-s1') || (github.ref_name == 'sprint-2' && 'worldsynth-s2' || github.ref_name == 'sprint-3' && 'worldsynth-s3' || github.ref_name == 'sprint-4' && 'worldsynth-s4' || 'worldsynth-s1') }}
+      - ${{ github.event_name == 'pull_request' && (github.base_ref == 'sprint-2' && 'worldsynth-s2-ci' || github.base_ref == 'sprint-3' && 'worldsynth-s3-ci' || github.base_ref == 'sprint-4' && 'worldsynth-s4-ci' || 'worldsynth-s1-ci') || (github.ref_name == 'sprint-2' && 'worldsynth-s2-ci' || github.ref_name == 'sprint-3' && 'worldsynth-s3-ci' || github.ref_name == 'sprint-4' && 'worldsynth-s4-ci' || 'worldsynth-s1-ci') }}
     if: >-
       needs.changes.outputs.has_zig == 'true' &&
       (needs.changes.outputs.zig == 'true' ||
@@ -154,7 +154,7 @@ jobs:
   build-ui:
     runs-on:
       - self-hosted
-      - ${{ github.event_name == 'pull_request' && (github.base_ref == 'sprint-2' && 'worldsynth-s2' || github.base_ref == 'sprint-3' && 'worldsynth-s3' || github.base_ref == 'sprint-4' && 'worldsynth-s4' || 'worldsynth-s1') || (github.ref_name == 'sprint-2' && 'worldsynth-s2' || github.ref_name == 'sprint-3' && 'worldsynth-s3' || github.ref_name == 'sprint-4' && 'worldsynth-s4' || 'worldsynth-s1') }}
+      - ${{ github.event_name == 'pull_request' && (github.base_ref == 'sprint-2' && 'worldsynth-s2-ci' || github.base_ref == 'sprint-3' && 'worldsynth-s3-ci' || github.base_ref == 'sprint-4' && 'worldsynth-s4-ci' || 'worldsynth-s1-ci') || (github.ref_name == 'sprint-2' && 'worldsynth-s2-ci' || github.ref_name == 'sprint-3' && 'worldsynth-s3-ci' || github.ref_name == 'sprint-4' && 'worldsynth-s4-ci' || 'worldsynth-s1-ci') }}
     if: >-
       needs.changes.outputs.has_ui == 'true' &&
       (needs.changes.outputs.ui == 'true' ||
@@ -187,7 +187,7 @@ jobs:
   security:
     runs-on:
       - self-hosted
-      - ${{ github.event_name == 'pull_request' && (github.base_ref == 'sprint-2' && 'worldsynth-s2' || github.base_ref == 'sprint-3' && 'worldsynth-s3' || github.base_ref == 'sprint-4' && 'worldsynth-s4' || 'worldsynth-s1') || (github.ref_name == 'sprint-2' && 'worldsynth-s2' || github.ref_name == 'sprint-3' && 'worldsynth-s3' || github.ref_name == 'sprint-4' && 'worldsynth-s4' || 'worldsynth-s1') }}
+      - ${{ github.event_name == 'pull_request' && (github.base_ref == 'sprint-2' && 'worldsynth-s2-ci' || github.base_ref == 'sprint-3' && 'worldsynth-s3-ci' || github.base_ref == 'sprint-4' && 'worldsynth-s4-ci' || 'worldsynth-s1-ci') || (github.ref_name == 'sprint-2' && 'worldsynth-s2-ci' || github.ref_name == 'sprint-3' && 'worldsynth-s3-ci' || github.ref_name == 'sprint-4' && 'worldsynth-s4-ci' || 'worldsynth-s1-ci') }}
     if: >-
       needs.changes.outputs.zig == 'true' ||
       needs.changes.outputs.ui == 'true' ||
