@@ -1,4 +1,5 @@
 const std = @import("std");
+const builtin = @import("builtin");
 const tables = @import("tables.zig");
 
 // ── Microtuning System (WP-124) ────────────────────────────────────
@@ -376,6 +377,12 @@ test "MTS-ESP stub note_to_freq matches 12-TET" {
 }
 
 test "benchmark: lookup, parse, accuracy" {
+    const lookup_budget_ns = switch (builtin.mode) {
+        .Debug => 150.0,
+        .ReleaseSafe => 120.0,
+        .ReleaseFast, .ReleaseSmall => 100.0,
+    };
+
     // -- Lookup benchmark --
     const t_12tet = TuningTable.init_12tet();
     var timer = try std.time.Timer.start();
@@ -420,13 +427,17 @@ test "benchmark: lookup, parse, accuracy" {
     const mts_ns_per_op = @as(f64, @floatFromInt(mts_ns)) / 10000.0;
 
     std.debug.print("\n  [WP-124] Microtuning Benchmark\n", .{});
-    std.debug.print("    Lookup:   {d:.1}ns/op (Schwelle: <100ns)\n", .{lookup_ns_per_op});
+    std.debug.print("    Lookup:   {d:.1}ns/op (Schwelle: <{d:.1}ns, mode={s})\n", .{
+        lookup_ns_per_op,
+        lookup_budget_ns,
+        @tagName(builtin.mode),
+    });
     std.debug.print("    Parse:    {d:.1}us/op (Schwelle: <5ms)\n", .{parse_us_per_op});
     std.debug.print("    Accuracy: {d:.6} Cent max deviation (Schwelle: <0.01 Cent)\n", .{max_cents_dev});
     std.debug.print("    MTS-ESP:  {d:.1}ns/op (Schwelle: <200ns)\n", .{mts_ns_per_op});
 
     // Enforce thresholds
-    try std.testing.expect(lookup_ns_per_op < 100.0);
+    try std.testing.expect(lookup_ns_per_op < lookup_budget_ns);
     try std.testing.expect(parse_us_per_op < 5000.0); // < 5ms
     try std.testing.expect(max_cents_dev < 0.01);
     try std.testing.expect(mts_ns_per_op < 200.0);

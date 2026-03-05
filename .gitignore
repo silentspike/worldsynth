@@ -2,6 +2,7 @@
 zig-cache/
 zig-out/
 .zig-cache/
+.zig-global-cache/
 
 # Node/UI
 ui/node_modules/
@@ -13,6 +14,9 @@ __pycache__/
 *.pyc
 .venv/
 venv/
+
+# Claude Code (local agent config)
+.claude/
 
 # IDE / AI
 .vscode/
