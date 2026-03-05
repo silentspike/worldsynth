@@ -27,6 +27,7 @@ pub const io = struct {
     pub const osc = @import("io/osc.zig");
     pub const midi_learn = @import("io/midi_learn.zig");
     pub const midi = @import("io/midi.zig");
+    pub const ableton_link = @import("io/ableton_link.zig");
 };
 
 const build_options = @import("build_options");
@@ -73,4 +74,5 @@ test {
     _ = io.osc;
     _ = io.midi_learn;
     _ = io.midi;
+    _ = io.ableton_link;
 }
