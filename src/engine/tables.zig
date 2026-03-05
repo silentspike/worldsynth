@@ -3,6 +3,8 @@ const std = @import("std");
 // ── Sine Look-Up Table (comptime, 2048 entries) ───────────────────────
 pub const SINE_LUT_SIZE: usize = 2048;
 const SINE_LUT_MASK: usize = SINE_LUT_SIZE - 1;
+const SINE_LUT_SIZE_F: f32 = @floatFromInt(SINE_LUT_SIZE);
+const INV_SINE_LUT_SIZE: f32 = 1.0 / SINE_LUT_SIZE_F;
 
 pub const SINE_LUT: [SINE_LUT_SIZE]f32 = blk: {
     @setEvalBranchQuota(SINE_LUT_SIZE * 4);
@@ -41,11 +43,30 @@ pub inline fn sine_fast(phase: f32) f32 {
 /// Optimized sine lookup for hot audio paths. Phase MUST be in [0.0, 1.0).
 /// Skips @floor wrapping — caller is responsible for phase management.
 pub inline fn sine_lookup(phase: f32) f32 {
-    const idx_f = phase * @as(f32, SINE_LUT_SIZE);
+    const idx_f = phase * SINE_LUT_SIZE_F;
     const idx: usize = @intFromFloat(idx_f);
     const frac = idx_f - @as(f32, @floatFromInt(idx));
     const i = idx & SINE_LUT_MASK;
     return @mulAdd(f32, frac, SINE_DELTA[i], SINE_LUT[i]);
+}
+
+/// Optimized block sine lookup for hot audio paths.
+/// Reuses LUT-space phase to avoid a float multiply per sample.
+pub inline fn sine_lookup_block(comptime N: usize, phase_ptr: *f32, phase_inc: f32, out_buf: *[N]f32) void {
+    var idx_f = phase_ptr.* * SINE_LUT_SIZE_F;
+    const idx_inc = phase_inc * SINE_LUT_SIZE_F;
+
+    for (out_buf) |*sample| {
+        const idx: usize = @intFromFloat(idx_f);
+        const frac = idx_f - @as(f32, @floatFromInt(idx));
+        const i = idx & SINE_LUT_MASK;
+        sample.* = @mulAdd(f32, frac, SINE_DELTA[i], SINE_LUT[i]);
+
+        idx_f += idx_inc;
+        if (idx_f >= SINE_LUT_SIZE_F) idx_f -= SINE_LUT_SIZE_F;
+    }
+
+    phase_ptr.* = idx_f * INV_SINE_LUT_SIZE;
 }
 
 // ── MIDI Note to Frequency Table (comptime, 128 entries) ──────────────
