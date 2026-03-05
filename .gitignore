@@ -18,9 +18,10 @@ venv/
 # Claude Code (local agent config)
 .claude/
 
-# IDE
+# IDE / AI
 .vscode/
 .idea/
+.claude/
 *.swp
 *~
 
