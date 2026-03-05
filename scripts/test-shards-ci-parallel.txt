@@ -1,29 +1,13 @@
-# CI parallel shard set.
-# Perf-sensitive benchmark shards are run separately in CI with WS_TEST_JOBS=1:
-#   engine.
-#   io.midi_learn.test
+# CI parallel shard set (functional / non-benchmark focused).
+# Benchmarked shards are moved to scripts/test-shards-ci-bench-serial.txt and
+# run with WS_TEST_JOBS=1 to keep timing assertions isolated.
 
 main.test_0
 io.jack.test
 io.pipewire.test
 io.onnx_runtime.test
-io.cuda.test
-io.tensorrt.test
 io.audio_backend.test
-io.osc.test
-io.midi.test
-dsp.voice.test
-dsp.drift.test
 dsp.oscillator.test
 dsp.osc_sine_noise.test
 dsp.filter.test
-dsp.formant_filter.test
-dsp.phaser_filter.test
-dsp.diode_filter.test
 dsp.ladder.test
-dsp.waveshaper.test
-dsp.engines.formant_engine.test
-dsp.engines.neural.test
-dsp.effects.eq.test
-dsp.utilities.dc_blocker.test
-dsp.utilities.oversampling.test

@@ -134,12 +134,13 @@ jobs:
       - name: Build
         run: zig build
 
-      - name: Test (parallel shards + serial perf-sensitive shards)
+      - name: Test (parallel functional shards + serial benchmark shards)
         run: |
-          # Run the broad suite in parallel for throughput.
+          # Functional/non-benchmark shards run in parallel for throughput.
           WS_TEST_SHARDS_FILE=scripts/test-shards-ci-parallel.txt scripts/test-parallel.sh
-          # Run perf-sensitive benchmark shards serially to avoid false failures under CPU contention.
-          WS_TEST_SHARDS="engine.,io.midi_learn.test" WS_TEST_JOBS=1 scripts/test-parallel.sh
+          # Benchmark shards are run serially to avoid CPU contention
+          # that skews benchmark timing assertions.
+          WS_TEST_SHARDS_FILE=scripts/test-shards-ci-bench-serial.txt WS_TEST_JOBS=1 scripts/test-parallel.sh
 
       # Build CLAP plugin artifact (verify it produces .clap)
       - name: Verify CLAP plugin artifact
