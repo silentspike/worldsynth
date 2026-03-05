@@ -2,7 +2,7 @@ name: Benchmark Regression
 
 on:
   push:
-    branches: [sprint-1, sprint-2, sprint-3, sprint-4]
+    branches: [main, sprint-1, sprint-2, sprint-3, sprint-4]
     paths:
       - 'src/**/*.zig'
       - 'build.zig'
@@ -17,6 +17,7 @@ concurrency:
 
 jobs:
   benchmark:
+    timeout-minutes: 30
     runs-on:
       - self-hosted
       - ${{ github.ref_name == 'sprint-2' && 'worldsynth-s2' || github.ref_name == 'sprint-3' && 'worldsynth-s3' || github.ref_name == 'sprint-4' && 'worldsynth-s4' || 'worldsynth-s1' }}
@@ -27,25 +28,35 @@ jobs:
         with:
           version: "0.15.2"
 
-      - name: Run benchmarks
+      - name: Run benchmark tests (benchmark-only)
         id: bench
         run: |
-          # Run tests and capture output (benchmarks are part of test suite)
           set +e
-          OUTPUT=$(zig build test 2>&1)
+          mkdir -p .zig-cache .zig-global-cache
+          zig test \
+            --dep build_options \
+            -Mroot=src/main.zig \
+            -Mbuild_options=scripts/build_options.test.zig \
+            --cache-dir .zig-cache \
+            --global-cache-dir .zig-global-cache \
+            --test-filter 'benchmark:' \
+            > benchmark-full-output.txt 2>&1
           EXIT_CODE=$?
           set -e
 
-          # Save full output for debugging
-          echo "$OUTPUT" > benchmark-full-output.txt
+          cat benchmark-full-output.txt
+
+          if [ "$EXIT_CODE" -ne 0 ]; then
+            echo "::error::Benchmark test execution failed (exit ${EXIT_CODE})"
+            exit "$EXIT_CODE"
+          fi
 
           # Extract benchmark lines (format: benchmark: name params = valueunit)
-          BENCH_LINES=$(echo "$OUTPUT" | grep -E '^benchmark:' || true)
+          BENCH_LINES=$(grep -E '^benchmark:' benchmark-full-output.txt || true)
 
           if [ -z "$BENCH_LINES" ]; then
-            echo "has_benchmarks=false" >> "$GITHUB_OUTPUT"
-            echo "No benchmark output found — skipping regression check"
-            exit 0
+            echo "::error::No benchmark output found in benchmark-only run"
+            exit 1
           fi
 
           echo "has_benchmarks=true" >> "$GITHUB_OUTPUT"

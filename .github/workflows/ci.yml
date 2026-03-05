@@ -134,8 +134,12 @@ jobs:
       - name: Build
         run: zig build
 
-      - name: Test
-        run: zig build test
+      - name: Test (parallel functional shards)
+        run: |
+          # Functional/non-benchmark shards run in parallel for throughput.
+          # Benchmark shards run in .github/workflows/benchmark.yml to avoid
+          # duplicated benchmark execution on the same SHA.
+          WS_TEST_SHARDS_FILE=scripts/test-shards-ci-parallel.txt scripts/test-parallel.sh
 
       # Build CLAP plugin artifact (verify it produces .clap)
       - name: Verify CLAP plugin artifact
