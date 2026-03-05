@@ -521,7 +521,7 @@ test "bench: WP-005 simd_mul 128S AVX2 vs SSE4 [>= 1.2x]" {
     var output: [BLOCK]f32 = undefined;
 
     // Warmup (native)
-    for (0..HEAVY_WARMUP) |_| {
+    for (0..WARMUP) |_| {
         var i: usize = 0;
         while (i + NW <= BLOCK) : (i += NW) {
             const a: Native = input_a[i..][0..NW].*;
