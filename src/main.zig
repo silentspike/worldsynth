@@ -18,6 +18,7 @@ pub const engine = struct {
 pub const dsp = struct {
     pub const voice = @import("dsp/voice.zig");
     pub const drift = @import("dsp/drift.zig");
+    pub const comb_filter = @import("dsp/comb_filter.zig");
     pub const oscillator = @import("dsp/oscillator.zig");
     pub const osc_sine_noise = @import("dsp/osc_sine_noise.zig");
     pub const filter = @import("dsp/filter.zig");
@@ -31,6 +32,9 @@ pub const dsp = struct {
     pub const engines = struct {
         pub const formant_engine = @import("dsp/engines/formant_engine.zig");
         pub const neural = @import("dsp/engines/neural.zig");
+        pub const spectral = @import("dsp/engines/spectral.zig");
+        pub const spectral_mask = @import("dsp/engines/spectral_mask.zig");
+        pub const physical = @import("dsp/engines/physical.zig");
     };
     pub const effects = struct {
         pub const eq = @import("dsp/effects/eq.zig");
@@ -1286,6 +1290,7 @@ test {
     _ = io.audio_backend;
     _ = dsp.voice;
     _ = dsp.drift;
+    _ = dsp.comb_filter;
     _ = dsp.oscillator;
     _ = dsp.osc_sine_noise;
     _ = dsp.filter;
@@ -1298,6 +1303,9 @@ test {
     _ = dsp.voice_manager;
     _ = dsp.engines.formant_engine;
     _ = dsp.engines.neural;
+    _ = dsp.engines.spectral;
+    _ = dsp.engines.spectral_mask;
+    _ = dsp.engines.physical;
     _ = dsp.effects.eq;
     _ = dsp.utilities.dc_blocker;
     _ = dsp.utilities.oversampling;
