@@ -7,23 +7,19 @@ on:
       - 'src/**/*.zig'
       - 'build.zig'
       - 'build.zig.zon'
-  pull_request:
-    branches: [sprint-1, sprint-2, sprint-3, sprint-4]
-    paths:
-      - 'src/**/*.zig'
-      - 'build.zig'
-      - 'build.zig.zon'
 
 permissions:
-  pull-requests: write
   contents: read
+
+concurrency:
+  group: benchmark-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   benchmark:
     runs-on:
       - self-hosted
-      - worldsynth
-      - ${{ github.event_name == 'pull_request' && (github.base_ref == 'sprint-2' && 'worldsynth-s2' || github.base_ref == 'sprint-3' && 'worldsynth-s3' || github.base_ref == 'sprint-4' && 'worldsynth-s4' || 'worldsynth-s1') || (github.ref_name == 'sprint-2' && 'worldsynth-s2' || github.ref_name == 'sprint-3' && 'worldsynth-s3' || github.ref_name == 'sprint-4' && 'worldsynth-s4' || 'worldsynth-s1') }}
+      - ${{ github.ref_name == 'sprint-2' && 'worldsynth-s2' || github.ref_name == 'sprint-3' && 'worldsynth-s3' || github.ref_name == 'sprint-4' && 'worldsynth-s4' || 'worldsynth-s1' }}
     steps:
       - uses: actions/checkout@v4
 
