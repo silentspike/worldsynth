@@ -1,4 +1,5 @@
 const std = @import("std");
+const builtin = @import("builtin");
 
 // ── SPSC Ring Buffer (WP-022) ─────────────────────────────────────────
 // Single-Producer Single-Consumer lock-free ring buffer.
@@ -175,6 +176,8 @@ test "AC-N1: multi-thread producer/consumer — no data loss" {
 
 // ── Benchmarks ────────────────────────────────────────────────────────
 
+const benchmark_enforced = builtin.mode == .ReleaseFast or builtin.mode == .ReleaseSmall;
+
 // Helper: spin-write with PAUSE hint
 inline fn spinWrite(comptime T: type, comptime SIZE: usize, r: *RingBuffer(T, SIZE), item: T) void {
     while (!r.write(item)) {
@@ -204,7 +207,7 @@ test "benchmark: write/read uncontended u64" {
     var read_times: [runs]u64 = undefined;
 
     for (&write_times, &read_times) |*wt, *rt| {
-        const ops = 100000;
+        const ops: usize = if (benchmark_enforced) 100_000 else 30_000;
         // Write benchmark
         var tw = try std.time.Timer.start();
         for (0..ops) |i| {
@@ -239,18 +242,19 @@ test "benchmark: write/read uncontended u64" {
 }
 
 test "benchmark: throughput 2 threads" {
-    const ITEMS: usize = 10_000_000;
+    const ITEMS: usize = if (benchmark_enforced) 10_000_000 else 2_000_000;
+    const WARMUP_ITEMS: usize = if (benchmark_enforced) 100_000 else 20_000;
     var ring: RingBuffer(u64, 4096) = .{};
 
-    // Warmup: 100k items
+    // Warmup
     const warmup_prod = try std.Thread.spawn(.{}, struct {
         fn run(r: *RingBuffer(u64, 4096)) void {
-            for (0..100_000) |i| {
+            for (0..WARMUP_ITEMS) |i| {
                 spinWrite(u64, 4096, r, i);
             }
         }
     }.run, .{&ring});
-    for (0..100_000) |_| {
+    for (0..WARMUP_ITEMS) |_| {
         _ = spinRead(u64, 4096, &ring);
     }
     warmup_prod.join();
@@ -285,7 +289,7 @@ test "benchmark: throughput 2 threads" {
     // Bare metal with dedicated cores typically achieves >100M ops/s.
     const threshold_m: f64 = if (@import("builtin").mode == .Debug) 0.5 else 0.5;
 
-    std.debug.print("\n  [WP-022] throughput 2 threads, 10M u64 items, buffer=4096\n", .{});
+    std.debug.print("\n  [WP-022] throughput 2 threads, {d} u64 items, buffer=4096\n", .{ITEMS});
     std.debug.print("    {d:.1}M ops/s ({d:.1}ns/op)\n", .{ m_ops, ns_per_op });
     std.debug.print("    Threshold: > {d:.1}M ops/s\n", .{threshold_m});
 
@@ -293,12 +297,12 @@ test "benchmark: throughput 2 threads" {
 }
 
 test "benchmark: buffer size scaling" {
-    std.debug.print("\n  [WP-022] Buffer size scaling (2 threads, 1M u64 items)\n", .{});
+    const ITEMS: usize = if (benchmark_enforced) 1_000_000 else 200_000;
+    std.debug.print("\n  [WP-022] Buffer size scaling (2 threads, {d} u64 items)\n", .{ITEMS});
     std.debug.print("    | Buffer | M ops/s | ns/op |\n", .{});
     std.debug.print("    |--------|---------|-------|\n", .{});
 
     inline for (.{ 256, 1024, 4096, 16384 }) |buf_size| {
-        const ITEMS: usize = 1_000_000;
         var ring: RingBuffer(u64, buf_size) = .{};
 
         const producer = try std.Thread.spawn(.{}, struct {
@@ -331,13 +335,13 @@ test "benchmark: buffer size scaling" {
 }
 
 test "benchmark: payload size scaling" {
-    std.debug.print("\n  [WP-022] Payload size scaling (2 threads, 1M items, buffer=4096)\n", .{});
+    std.debug.print("\n  [WP-022] Payload size scaling (2 threads, mode-scaled items, buffer=4096)\n", .{});
     std.debug.print("    | Payload | Bytes | M ops/s |\n", .{});
     std.debug.print("    |---------|-------|---------|\n", .{});
 
     // u64 (8 bytes)
     {
-        const ITEMS: usize = 1_000_000;
+        const ITEMS: usize = if (benchmark_enforced) 1_000_000 else 200_000;
         var ring: RingBuffer(u64, 4096) = .{};
         const prod = try std.Thread.spawn(.{}, struct {
             fn run(r: *RingBuffer(u64, 4096)) void {
@@ -364,7 +368,7 @@ test "benchmark: payload size scaling" {
     // [128]f32 (512 bytes)
     {
         const T = [128]f32;
-        const ITEMS: usize = 100_000; // fewer items for large payload
+        const ITEMS: usize = if (benchmark_enforced) 100_000 else 20_000;
         var ring: RingBuffer(T, 256) = .{}; // smaller buffer for large payload
         const prod = try std.Thread.spawn(.{}, struct {
             fn run(r: *RingBuffer(T, 256)) void {
@@ -393,7 +397,7 @@ test "benchmark: payload size scaling" {
     // [512]f32 (2048 bytes)
     {
         const T = [512]f32;
-        const ITEMS: usize = 50_000; // fewer for very large payload
+        const ITEMS: usize = if (benchmark_enforced) 50_000 else 10_000;
         var ring: RingBuffer(T, 64) = .{}; // small buffer
         const prod = try std.Thread.spawn(.{}, struct {
             fn run(r: *RingBuffer(T, 64)) void {
