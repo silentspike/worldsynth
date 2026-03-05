@@ -311,6 +311,7 @@ pub const PipeWireClient = struct {
     main_loop: *pw_main_loop,
     stream: ?*pw_stream = null,
     process_fn: ?ProcessFn,
+    sample_rate: u32,
 
     // Stream events vtable — must live as long as the stream
     stream_events: pw_stream_events,
@@ -365,6 +366,7 @@ pub const PipeWireClient = struct {
 
     /// Initialize PipeWire and create main loop.
     /// Stream is created lazily in start() to ensure stable self pointer.
+    /// Default sample rate 48000 matches the PipeWire daemon default — no resampling.
     pub fn init(process_fn: ?ProcessFn) !PipeWireClient {
         pw_init(null, null);
 
@@ -373,15 +375,17 @@ pub const PipeWireClient = struct {
             return error.PipeWireMainLoopFailed;
         };
 
+        const rate: u32 = 48000;
         return .{
             .main_loop = main_loop,
             .stream = null,
             .process_fn = process_fn,
+            .sample_rate = rate,
             .stream_events = .{
                 .version = PW_VERSION_STREAM_EVENTS,
                 .process = processCallback,
             },
-            .format_pod = AudioFormatPod.build(44100),
+            .format_pod = AudioFormatPod.build(rate),
         };
     }
 
@@ -408,7 +412,7 @@ pub const PipeWireClient = struct {
             @ptrCast(self),
         ) orelse return error.PipeWireStreamFailed;
 
-        self.format_pod = AudioFormatPod.build(44100);
+        self.format_pod = AudioFormatPod.build(self.sample_rate);
         const params = [_]*const spa_pod{@ptrCast(&self.format_pod)};
 
         if (pw_stream_connect(

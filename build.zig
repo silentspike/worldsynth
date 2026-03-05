@@ -9,6 +9,7 @@ pub fn build(b: *std.Build) void {
     const enable_tensorrt = b.option(bool, "enable_tensorrt", "Enable TensorRT acceleration for neural inference") orelse false;
     const enable_pipewire = b.option(bool, "pipewire", "Enable PipeWire audio backend") orelse false;
     const enable_jack = b.option(bool, "jack", "Enable JACK audio backend") orelse false;
+    const enable_alsa = b.option(bool, "alsa", "Enable ALSA raw hw: mmap audio backend") orelse false;
     const enable_neural = b.option(bool, "enable_neural", "Enable ONNX Runtime neural engine bindings") orelse false;
 
     const options = b.addOptions();
@@ -16,6 +17,7 @@ pub fn build(b: *std.Build) void {
     options.addOption(bool, "enable_tensorrt", enable_tensorrt);
     options.addOption(bool, "enable_pipewire", enable_pipewire);
     options.addOption(bool, "enable_jack", enable_jack);
+    options.addOption(bool, "enable_alsa", enable_alsa);
     options.addOption(bool, "enable_neural", enable_neural);
 
     // ── Root Module ──────────────────────────────────────────────
@@ -29,7 +31,7 @@ pub fn build(b: *std.Build) void {
     // ── Optional System Libraries ──────────────────────────────────
     // JACK/PipeWire shared libraries need libc (pthreads, TLS init).
     // Without libc, Zig skips glibc startup → segfault in JACK init.
-    if (enable_jack or enable_pipewire or enable_neural or enable_cuda or enable_tensorrt) {
+    if (enable_jack or enable_pipewire or enable_alsa or enable_neural or enable_cuda or enable_tensorrt) {
         root_mod.link_libc = true;
     }
     if (enable_cuda) {
@@ -43,6 +45,9 @@ pub fn build(b: *std.Build) void {
     }
     if (enable_pipewire) {
         root_mod.linkSystemLibrary("pipewire-0.3", .{});
+    }
+    if (enable_alsa) {
+        root_mod.linkSystemLibrary("asound", .{});
     }
     if (enable_neural) {
         root_mod.linkSystemLibrary("onnxruntime", .{});
@@ -73,7 +78,7 @@ pub fn build(b: *std.Build) void {
     });
     test_mod.addOptions("build_options", options);
 
-    if (enable_jack or enable_pipewire or enable_neural or enable_cuda or enable_tensorrt) {
+    if (enable_jack or enable_pipewire or enable_alsa or enable_neural or enable_cuda or enable_tensorrt) {
         test_mod.link_libc = true;
     }
     if (enable_cuda) {
@@ -87,6 +92,9 @@ pub fn build(b: *std.Build) void {
     }
     if (enable_pipewire) {
         test_mod.linkSystemLibrary("pipewire-0.3", .{});
+    }
+    if (enable_alsa) {
+        test_mod.linkSystemLibrary("asound", .{});
     }
     if (enable_neural) {
         test_mod.linkSystemLibrary("onnxruntime", .{});
