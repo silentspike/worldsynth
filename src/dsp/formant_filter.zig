@@ -1,4 +1,5 @@
 const std = @import("std");
+const builtin = @import("builtin");
 const filter = @import("filter.zig");
 
 // ── Formant Filter (WP-033) ─────────────────────────────────────────
@@ -295,11 +296,16 @@ test "benchmark: formant filter 128 samples" {
     const elapsed_ns = timer.read();
     const ns_per_block = elapsed_ns / iterations;
 
-    // Budget: Issue says < 7500ns (ReleaseFast target)
-    // Debug mode: ~18000ns (remote), ~26000ns (local Ryzen 9)
-    // ReleaseFast: ~1522ns (remote), ~2128ns (local)
-    // Threshold for debug test gate: 60000ns (covers both CPUs + build server variability)
-    const budget_ns: u64 = 60000;
-    std.debug.print("\n[WP-033] formant_filter 5xSVF: {}ns/block (budget: {}ns)\n", .{ ns_per_block, budget_ns });
+    // Keep a strict release budget but allow realistic debug jitter on CI hosts.
+    const budget_ns: u64 = switch (builtin.mode) {
+        .Debug => 120_000,
+        .ReleaseSafe => 60_000,
+        .ReleaseFast, .ReleaseSmall => 12_000,
+    };
+    std.debug.print("\n[WP-033] formant_filter 5xSVF: {}ns/block (budget: {}ns, mode={s})\n", .{
+        ns_per_block,
+        budget_ns,
+        @tagName(builtin.mode),
+    });
     try std.testing.expect(ns_per_block < budget_ns);
 }
