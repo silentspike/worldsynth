@@ -9,6 +9,7 @@ pub const engine = struct {
     pub const param = @import("engine/param.zig");
     pub const param_smooth = @import("engine/param_smooth.zig");
     pub const undo = @import("engine/undo.zig");
+    pub const quality_governor = @import("engine/quality_governor.zig");
     pub const microtuning = @import("engine/microtuning.zig");
     pub const bench = @import("engine/bench.zig");
     pub const engine_core = @import("engine/engine.zig");
@@ -23,6 +24,9 @@ pub const dsp = struct {
     pub const ladder = @import("dsp/ladder.zig");
     pub const envelope = @import("dsp/envelope.zig");
     pub const voice_manager = @import("dsp/voice_manager.zig");
+    pub const sub_harmonics = @import("dsp/sub_harmonics.zig");
+    pub const env_follower = @import("dsp/env_follower.zig");
+    pub const pitch_follower = @import("dsp/pitch_follower.zig");
 };
 
 pub const platform = struct {
@@ -42,6 +46,7 @@ pub const io = struct {
     pub const osc = @import("io/osc.zig");
     pub const midi_learn = @import("io/midi_learn.zig");
     pub const midi = @import("io/midi.zig");
+    pub const ableton_link = @import("io/ableton_link.zig");
 };
 
 const build_options = @import("build_options");
@@ -1249,6 +1254,7 @@ test {
     _ = engine.param;
     _ = engine.param_smooth;
     _ = engine.undo;
+    _ = engine.quality_governor;
     _ = engine.microtuning;
     _ = engine.bench;
     _ = engine.engine_core;
@@ -1264,9 +1270,13 @@ test {
     _ = dsp.ladder;
     _ = dsp.envelope;
     _ = dsp.voice_manager;
+    _ = dsp.sub_harmonics;
+    _ = dsp.env_follower;
+    _ = dsp.pitch_follower;
     _ = io.osc;
     _ = io.midi_learn;
     _ = io.midi;
+    _ = io.ableton_link;
     _ = platform.ring_buffer;
     _ = platform.barrier;
     _ = platform.thread_pool;
