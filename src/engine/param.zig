@@ -1,4 +1,5 @@
 const std = @import("std");
+const builtin = @import("builtin");
 
 // ── MVCC Param-System (WP-007) ──────────────────────────────────────
 // Lock-free Parameter-Updates via Triple-Buffer Atomic Swap.
@@ -280,7 +281,7 @@ test "multi-thread: 1M stress test, slot isolation (AC-8)" {
     var state: ParamState = undefined;
     state.init();
 
-    const STRESS_ITERS: usize = 1_000_000;
+    const STRESS_ITERS: usize = if (builtin.mode == .Debug) 250_000 else 1_000_000;
     var writer_done = std.atomic.Value(bool).init(false);
 
     // Writer: 1M set_param, alternating values

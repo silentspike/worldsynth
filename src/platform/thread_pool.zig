@@ -481,7 +481,7 @@ fn runOwnerStealerStress(comptime ITEMS: usize) !StressMetrics {
 fn benchPushThroughputMops() !f64 {
     const Deque = ChaseLevDeque(u64, 12);
     const BATCH: usize = 1 << 12;
-    const BATCHES: usize = 256;
+    const BATCHES: usize = if (benchmark_enforced) 256 else 96;
     const OPS: usize = BATCH * BATCHES;
 
     var deque: Deque = .{};
@@ -513,7 +513,7 @@ fn benchPushThroughputMops() !f64 {
 fn benchStealThroughputMops() !f64 {
     const Deque = ChaseLevDeque(u64, 12);
     const BATCH: usize = 1 << 12;
-    const BATCHES: usize = 256;
+    const BATCHES: usize = if (benchmark_enforced) 256 else 96;
     const OPS: usize = BATCH * BATCHES;
 
     var deque: Deque = .{};
@@ -546,7 +546,7 @@ fn benchStealThroughputMops() !f64 {
 }
 
 fn benchContention(comptime STEALERS: usize) !ContentionMetrics {
-    const ITEMS: usize = 200_000;
+    const ITEMS: usize = if (benchmark_enforced) 200_000 else 50_000;
     const Deque = ChaseLevDeque(usize, 12);
     const refill_watermark: usize = 1 << 10;
     const refill_target: usize = 1 << 11;

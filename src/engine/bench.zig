@@ -51,6 +51,13 @@ const WARMUP: usize = if (enforce) 1_000 else 200;
 const ITERS: usize = if (enforce) 10_000 else 2_000;
 const BLOCK: usize = 128;
 
+// Extra scaling for particularly expensive benchmark tests in Debug mode.
+// ReleaseFast/ReleaseSmall keep full depth and threshold enforcement.
+const HEAVY_WARMUP: usize = if (enforce) WARMUP else 64;
+const HEAVY_ITERS: usize = if (enforce) ITERS else 512;
+const SCALING_WARMUP: usize = if (enforce) WARMUP else 48;
+const SCALING_ITERS: usize = if (enforce) ITERS else 384;
+
 /// Audio block budget: 128 samples @ 44.1kHz = 2,902,494 ns
 const BUDGET_NS: f64 = @as(f64, BLOCK) / 44_100.0 * 1_000_000_000.0;
 
@@ -514,7 +521,7 @@ test "bench: WP-005 simd_mul 128S AVX2 vs SSE4 [>= 1.2x]" {
     var output: [BLOCK]f32 = undefined;
 
     // Warmup (native)
-    for (0..WARMUP) |_| {
+    for (0..HEAVY_WARMUP) |_| {
         var i: usize = 0;
         while (i + NW <= BLOCK) : (i += NW) {
             const a: Native = input_a[i..][0..NW].*;
@@ -656,7 +663,7 @@ test "bench: WP-006 VoicePool 64V 128S AoSoA [ns/voice < 500]" {
             s.* = 0;
             continue;
         };
-        for (0..ITERS) |_| {
+        for (0..HEAVY_ITERS) |_| {
             for (&pool.hot) |*chunk| {
                 for (0..BLOCK) |_| {
                     for (0..voice.CHUNK_SIZE) |si| {
@@ -667,7 +674,7 @@ test "bench: WP-006 VoicePool 64V 128S AoSoA [ns/voice < 500]" {
             }
             std.mem.doNotOptimizeAway(&pool);
         }
-        s.* = timer.read() / ITERS;
+        s.* = timer.read() / HEAVY_ITERS;
     }
     const r = aggregate(samples);
     const ns_per_voice = r.median / voice.MAX_VOICES;
@@ -702,7 +709,7 @@ test "bench: WP-006 VoicePool voice scaling (Tuning)" {
         }
 
         // Warmup
-        for (0..WARMUP) |_| {
+        for (0..SCALING_WARMUP) |_| {
             for (&pool.hot) |*chunk| {
                 for (0..BLOCK) |_| {
                     for (0..voice.CHUNK_SIZE) |si| {
@@ -723,7 +730,7 @@ test "bench: WP-006 VoicePool voice scaling (Tuning)" {
                 s.* = 0;
                 continue;
             };
-            for (0..ITERS) |_| {
+            for (0..SCALING_ITERS) |_| {
                 for (&pool.hot) |*chunk| {
                     for (0..BLOCK) |_| {
                         for (0..voice.CHUNK_SIZE) |si| {
@@ -736,7 +743,7 @@ test "bench: WP-006 VoicePool voice scaling (Tuning)" {
                 }
                 std.mem.doNotOptimizeAway(&pool);
             }
-            s.* = timer.read() / ITERS;
+            s.* = timer.read() / SCALING_ITERS;
         }
         const r = aggregate(samples);
         results[vi] = r.median;
@@ -993,7 +1000,7 @@ test "bench: WP-008 ParamSmoother 256 params 128S [< 200000ns/block]" {
     }
 
     // Warmup
-    for (0..WARMUP) |_| {
+    for (0..HEAVY_WARMUP) |_| {
         for (&smoothers) |*s| {
             for (0..BLOCK) |_| {
                 std.mem.doNotOptimizeAway(s.next());
@@ -1008,14 +1015,14 @@ test "bench: WP-008 ParamSmoother 256 params 128S [< 200000ns/block]" {
             sample.* = 0;
             continue;
         };
-        for (0..ITERS) |_| {
+        for (0..HEAVY_ITERS) |_| {
             for (&smoothers) |*s| {
                 for (0..BLOCK) |_| {
                     std.mem.doNotOptimizeAway(s.next());
                 }
             }
         }
-        sample.* = timer.read() / ITERS;
+        sample.* = timer.read() / HEAVY_ITERS;
     }
     const r = aggregate(samples);
     const ns_per_param = r.median / 256;
@@ -1044,7 +1051,7 @@ test "bench: WP-008 ParamSmoother scaling (Tuning)" {
         }
 
         // Warmup
-        for (0..WARMUP) |_| {
+        for (0..SCALING_WARMUP) |_| {
             for (smoothers[0..pc]) |*s| {
                 for (0..BLOCK) |_| std.mem.doNotOptimizeAway(s.next());
             }
@@ -1057,12 +1064,12 @@ test "bench: WP-008 ParamSmoother scaling (Tuning)" {
                 sample.* = 0;
                 continue;
             };
-            for (0..ITERS) |_| {
+            for (0..SCALING_ITERS) |_| {
                 for (smoothers[0..pc]) |*s| {
                     for (0..BLOCK) |_| std.mem.doNotOptimizeAway(s.next());
                 }
             }
-            sample.* = timer.read() / ITERS;
+            sample.* = timer.read() / SCALING_ITERS;
         }
         results[pi] = aggregate(samples).median;
     }

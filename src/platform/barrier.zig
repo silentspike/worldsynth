@@ -48,10 +48,11 @@ fn wait_counting(barrier: *Barrier) u64 {
 
 fn bench_wait_ready(worker_count: u32) !u64 {
     std.debug.assert(worker_count > 0);
-    const iterations: usize = 100_000;
+    const iterations: usize = if (benchmark_enforced) 100_000 else 20_000;
+    const warmup_iters: usize = if (benchmark_enforced) 10_000 else 2_000;
     var barrier: Barrier = .{};
 
-    for (0..10_000) |_| {
+    for (0..warmup_iters) |_| {
         barrier.reset(worker_count);
         var ready: u32 = 0;
         while (ready < worker_count) : (ready += 1) {
@@ -85,10 +86,11 @@ fn bench_wait_ready(worker_count: u32) !u64 {
 
 fn bench_wait_delayed(worker_count: u32, delay_spins: u32) !WaitMetrics {
     std.debug.assert(worker_count > 0);
-    const iterations: usize = 50_000;
+    const iterations: usize = if (benchmark_enforced) 50_000 else 10_000;
+    const warmup_iters: usize = if (benchmark_enforced) 5_000 else 1_000;
     var barrier: Barrier = .{};
 
-    for (0..5_000) |_| {
+    for (0..warmup_iters) |_| {
         barrier.reset(worker_count);
         var ready: u32 = 1;
         while (ready < worker_count) : (ready += 1) {
@@ -139,9 +141,10 @@ fn wait_counting_with_release(barrier: *Barrier, release_after_spins: u32) u64 {
 
 fn bench_reset_ns() !u64 {
     var barrier: Barrier = .{};
-    const iterations: usize = 100_000;
+    const iterations: usize = if (benchmark_enforced) 100_000 else 20_000;
+    const warmup_iters: usize = if (benchmark_enforced) 10_000 else 2_000;
 
-    for (0..10_000) |i| {
+    for (0..warmup_iters) |i| {
         barrier.reset(@intCast(i & 15));
     }
 
@@ -160,9 +163,10 @@ fn bench_reset_ns() !u64 {
 
 fn bench_full_cycle_ns(job_count: u32) !u64 {
     var barrier: Barrier = .{};
-    const iterations: usize = 50_000;
+    const iterations: usize = if (benchmark_enforced) 50_000 else 10_000;
+    const warmup_iters: usize = if (benchmark_enforced) 5_000 else 1_000;
 
-    for (0..5_000) |_| {
+    for (0..warmup_iters) |_| {
         barrier.reset(job_count);
         var i: u32 = 0;
         while (i < job_count) : (i += 1) {

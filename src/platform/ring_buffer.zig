@@ -142,7 +142,7 @@ test "AC-N2: no heap — sizeOf is compile-time known" {
 }
 
 test "AC-N1: multi-thread producer/consumer — no data loss" {
-    const ITEMS: usize = 1_000_000;
+    const ITEMS: usize = if (benchmark_enforced) 1_000_000 else 250_000;
     var ring: RingBuffer(u64, 4096) = .{};
 
     // Producer thread
@@ -242,8 +242,8 @@ test "benchmark: write/read uncontended u64" {
 }
 
 test "benchmark: throughput 2 threads" {
-    const ITEMS: usize = if (benchmark_enforced) 10_000_000 else 2_000_000;
-    const WARMUP_ITEMS: usize = if (benchmark_enforced) 100_000 else 20_000;
+    const ITEMS: usize = if (benchmark_enforced) 10_000_000 else 500_000;
+    const WARMUP_ITEMS: usize = if (benchmark_enforced) 100_000 else 10_000;
     var ring: RingBuffer(u64, 4096) = .{};
 
     // Warmup
@@ -297,7 +297,7 @@ test "benchmark: throughput 2 threads" {
 }
 
 test "benchmark: buffer size scaling" {
-    const ITEMS: usize = if (benchmark_enforced) 1_000_000 else 200_000;
+    const ITEMS: usize = if (benchmark_enforced) 1_000_000 else 100_000;
     std.debug.print("\n  [WP-022] Buffer size scaling (2 threads, {d} u64 items)\n", .{ITEMS});
     std.debug.print("    | Buffer | M ops/s | ns/op |\n", .{});
     std.debug.print("    |--------|---------|-------|\n", .{});
