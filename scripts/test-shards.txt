@@ -1,0 +1,30 @@
+# One substring filter per shard. Each shard is executed via:
+# zig test --test-filter <value>
+# Keep entries specific to avoid overlaps.
+
+main.test_0
+engine.
+io.jack.test
+io.pipewire.test
+io.onnx_runtime.test
+io.cuda.test
+io.tensorrt.test
+io.audio_backend.test
+io.osc.test
+io.midi_learn.test
+io.midi.test
+dsp.voice.test
+dsp.drift.test
+dsp.oscillator.test
+dsp.osc_sine_noise.test
+dsp.filter.test
+dsp.formant_filter.test
+dsp.phaser_filter.test
+dsp.diode_filter.test
+dsp.ladder.test
+dsp.waveshaper.test
+dsp.engines.formant_engine.test
+dsp.engines.neural.test
+dsp.effects.eq.test
+dsp.utilities.dc_blocker.test
+dsp.utilities.oversampling.test
