@@ -131,8 +131,8 @@ jobs:
       - name: Build
         run: zig build
 
-      - name: Test
-        run: zig build test
+      - name: Test (parallel shards)
+        run: scripts/test-parallel.sh
 
       # Build CLAP plugin artifact (verify it produces .clap)
       - name: Verify CLAP plugin artifact

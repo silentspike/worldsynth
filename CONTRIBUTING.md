@@ -13,7 +13,7 @@ Thank you for considering contributing to WorldSynth.
 ```bash
 # DSP backend
 zig build
-zig build test
+scripts/test-parallel.sh
 
 # UI
 cd ui
@@ -21,6 +21,31 @@ npm ci
 npm run build
 npm run check
 ```
+
+### Parallel Test Runner
+
+`scripts/test-parallel.sh` splits the Zig test suite into deterministic shards
+and runs them in parallel. The `build-zig` CI job on the self-hosted
+`worldsynth` runner uses the same script, so local and remote behavior match.
+
+```bash
+# Default (auto workers, capped to keep runners stable)
+scripts/test-parallel.sh
+
+# Baseline timing (serial)
+scripts/test-parallel.sh --jobs 1
+
+# Explicit worker count
+scripts/test-parallel.sh --jobs "$(nproc)"
+
+# Run only specific shards
+scripts/test-parallel.sh --jobs 4 --shards "engine.,io.midi.test,dsp.utilities.oversampling.test"
+```
+
+Troubleshooting:
+- Failing shard output is printed automatically (first lines of log).
+- To isolate a flaky module, rerun only that shard via `--shards`.
+- Shard definitions live in `scripts/test-shards.txt`.
 
 ## How to Contribute
 
@@ -41,7 +66,7 @@ npm run check
 4. Run all quality gates:
    ```bash
    zig build
-   zig build test
+   scripts/test-parallel.sh
    cd ui && npm run build
    cd ui && npm run check
    ```

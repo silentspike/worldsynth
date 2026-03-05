@@ -66,7 +66,11 @@ Professional multi-engine synthesizer with Zig DSP backend, Svelte 5 UI, and CLA
 zig build
 
 # Run tests
-zig build test
+scripts/test-parallel.sh
+
+# Compare serial vs parallel locally
+scripts/test-parallel.sh --jobs 1
+scripts/test-parallel.sh --jobs "$(nproc)"
 
 # UI (development)
 cd ui
