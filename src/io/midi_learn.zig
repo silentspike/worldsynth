@@ -384,11 +384,15 @@ test "benchmark: CC dispatch (hot path)" {
     const iters = 100_000;
     var times: [runs]u64 = undefined;
     for (&times) |*t| {
+        var checksum: u64 = 0;
         var timer = try std.time.Timer.start();
         for (0..iters) |i| {
-            std.mem.doNotOptimizeAway(ml.process_cc(@intCast(i % 128), @intCast(i % 128)));
+            const event = ml.process_cc(@intCast(i % 128), @intCast(i % 128)).?;
+            checksum +%= event.param_id;
+            checksum +%= @as(u64, @intFromFloat(event.normalized * 127.0));
         }
         t.* = timer.read();
+        std.mem.doNotOptimizeAway(checksum);
     }
     std.mem.sortUnstable(u64, &times, {}, std.sort.asc(u64));
     const median_ns = @as(f64, @floatFromInt(times[runs / 2]));
