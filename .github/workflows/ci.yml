@@ -2,9 +2,9 @@ name: CI
 
 on:
   push:
-    branches: [main, sprint-1, sprint-2, sprint-3, sprint-4]
+    branches: [main]
   pull_request:
-    branches: [main, sprint-1, sprint-2, sprint-3, sprint-4]
+    branches: [main, sprint-1, sprint-2, sprint-3, sprint-4, sprint-5]
 
 permissions:
   contents: read
@@ -30,7 +30,6 @@ jobs:
       zig: ${{ steps.filter.outputs.zig }}
       ui: ${{ steps.filter.outputs.ui }}
       ci: ${{ steps.filter.outputs.ci }}
-      docs-only: ${{ steps.filter.outputs.docs-only }}
       has_zig: ${{ steps.exists.outputs.has_zig }}
       has_ui: ${{ steps.exists.outputs.has_ui }}
     steps:
@@ -49,11 +48,6 @@ jobs:
               - 'ui/**'
             ci:
               - '.github/**'
-            docs-only:
-              - '**/*.md'
-              - 'docs/**'
-              - 'LICENSE'
-              - '.editorconfig'
 
       - name: Check file existence
         id: exists
@@ -80,13 +74,13 @@ jobs:
           fi
 
       - name: Check Zig formatting
-        if: (needs.changes.outputs.zig == 'true' || github.event_name == 'push') && needs.changes.outputs.has_zig == 'true'
+        if: (needs.changes.outputs.zig == 'true' || needs.changes.outputs.ci == 'true') && needs.changes.outputs.has_zig == 'true'
         uses: mlugg/setup-zig@v2
         with:
           version: 0.15.2
 
       - name: Run zig fmt --check
-        if: (needs.changes.outputs.zig == 'true' || github.event_name == 'push') && needs.changes.outputs.has_zig == 'true'
+        if: (needs.changes.outputs.zig == 'true' || needs.changes.outputs.ci == 'true') && needs.changes.outputs.has_zig == 'true'
         run: |
           if [ -d src/ ]; then
             find src/ -name '*.zig' -print0 | xargs -r -0 zig fmt --check 2>&1 || {
@@ -105,8 +99,7 @@ jobs:
     if: >-
       needs.changes.outputs.has_zig == 'true' &&
       (needs.changes.outputs.zig == 'true' ||
-      needs.changes.outputs.ci == 'true' ||
-      github.event_name == 'push')
+      needs.changes.outputs.ci == 'true')
     needs: [changes]
     steps:
       - uses: actions/checkout@v6
@@ -161,8 +154,7 @@ jobs:
     if: >-
       needs.changes.outputs.has_ui == 'true' &&
       (needs.changes.outputs.ui == 'true' ||
-      needs.changes.outputs.ci == 'true' ||
-      github.event_name == 'push')
+      needs.changes.outputs.ci == 'true')
     needs: [changes]
     steps:
       - uses: actions/checkout@v6
@@ -194,8 +186,7 @@ jobs:
     if: >-
       needs.changes.outputs.zig == 'true' ||
       needs.changes.outputs.ui == 'true' ||
-      needs.changes.outputs.ci == 'true' ||
-      github.event_name == 'push'
+      needs.changes.outputs.ci == 'true'
     needs: [changes]
     steps:
       - uses: actions/checkout@v6
