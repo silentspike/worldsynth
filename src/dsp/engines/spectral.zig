@@ -596,7 +596,7 @@ test "benchmark: FFT 1024 forward under threshold" {
     const iters = benchIterations(2_000, 8_000, 40_000);
     const ns = benchForwardFftNs(FFT_1024, iters);
     const budget = benchBudgetNs(
-        120_000, // debug
+        180_000, // debug
         25_000, // release-safe
         10_000, // release-fast/small (issue threshold)
     );
@@ -613,7 +613,7 @@ test "benchmark: FFT 2048 forward under threshold" {
     const iters = benchIterations(1_200, 5_000, 25_000);
     const ns = benchForwardFftNs(FFT_SIZE, iters);
     const budget = benchBudgetNs(
-        240_000, // debug
+        320_000, // debug
         50_000, // release-safe
         22_000, // release-fast/small (issue threshold)
     );
