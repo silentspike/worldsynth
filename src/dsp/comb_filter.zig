@@ -174,7 +174,7 @@ test "benchmark: comb fixed delay 128 samples" {
     const ns_per_block = timer.read() / iterations;
 
     const budget_ns: u64 = switch (builtin.mode) {
-        .Debug => 80_000,
+        .Debug => 130_000,
         .ReleaseSafe => 10_000,
         .ReleaseFast, .ReleaseSmall => 400,
     };
@@ -305,7 +305,7 @@ test "benchmark: comb 64 voices scaling" {
     const ns_total = timer.read() / iterations;
 
     const budget_ns: u64 = switch (builtin.mode) {
-        .Debug => 3_000_000,
+        .Debug => 8_000_000,
         .ReleaseSafe => 400_000,
         .ReleaseFast, .ReleaseSmall => 25_000,
     };

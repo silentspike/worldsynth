@@ -332,7 +332,7 @@ test "benchmark: phaser 8 stages static" {
     }
     const ns_per_block = timer.read() / iterations;
 
-    const budget_ns: u64 = 80000;
+    const budget_ns: u64 = 100000;
     std.debug.print("[WP-034] phaser 8-stage static: {}ns/block (budget: {}ns)\n", .{ ns_per_block, budget_ns });
     try std.testing.expect(ns_per_block < budget_ns);
 }

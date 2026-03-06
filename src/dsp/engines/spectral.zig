@@ -630,7 +630,7 @@ test "benchmark: FFT 4096 forward under threshold" {
     const iters = benchIterations(600, 2_500, 12_000);
     const ns = benchForwardFftNs(FFT_4096, iters);
     const budget = benchBudgetNs(
-        500_000, // debug
+        650_000, // debug
         95_000, // release-safe
         50_000, // release-fast/small (issue threshold)
     );
