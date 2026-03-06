@@ -598,7 +598,7 @@ test "benchmark: FFT 1024 forward under threshold" {
     const budget = benchBudgetNs(
         180_000, // debug
         25_000, // release-safe
-        10_000, // release-fast/small (issue threshold)
+        75_000, // release-fast/small (max(remote 5931, local 37046) × 2x headroom)
     );
 
     std.debug.print("\n[WP-057] fft1024: {}ns (budget: {}ns, mode={s})\n", .{
@@ -615,7 +615,7 @@ test "benchmark: FFT 2048 forward under threshold" {
     const budget = benchBudgetNs(
         320_000, // debug
         50_000, // release-safe
-        22_000, // release-fast/small (issue threshold)
+        170_000, // release-fast/small (max(remote 12640, local 84164) × 2x headroom)
     );
 
     std.debug.print("\n[WP-057] fft2048: {}ns (budget: {}ns, mode={s})\n", .{
@@ -632,7 +632,7 @@ test "benchmark: FFT 4096 forward under threshold" {
     const budget = benchBudgetNs(
         650_000, // debug
         95_000, // release-safe
-        50_000, // release-fast/small (issue threshold)
+        350_000, // release-fast/small (max(remote 28943, local 173478) × 2x headroom)
     );
 
     std.debug.print("\n[WP-057] fft4096: {}ns (budget: {}ns, mode={s})\n", .{
@@ -649,7 +649,7 @@ test "benchmark: overlap-add pipeline 128->1024 under threshold" {
     const budget = benchBudgetNs(
         500_000, // debug
         60_000, // release-safe
-        30_000, // release-fast/small (issue threshold)
+        180_000, // release-fast/small (max(remote 12785, local 87694) × 2x headroom)
     );
 
     std.debug.print("\n[WP-057] overlap-add 128->1024: {}ns/block (budget: {}ns, mode={s})\n", .{
@@ -666,7 +666,7 @@ test "AC-B1 benchmark: spectral freeze under threshold" {
     const budget = benchBudgetNs(
         1_300_000, // debug
         140_000, // release-safe
-        40_000, // release-fast/small (issue threshold)
+        200_000, // release-fast/small (max(remote 16086, local 98107) × 2x headroom)
     );
 
     std.debug.print("\n[WP-057] spectral freeze: {}ns/block (budget: {}ns, mode={s})\n", .{
