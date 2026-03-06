@@ -1,0 +1,11 @@
+{
+  "name": "worldsynth-ui",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "check": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "typescript": "^5.7"
+  }
+}
