@@ -69,6 +69,7 @@ pub const io = struct {
     pub const midi_learn = @import("io/midi_learn.zig");
     pub const midi = @import("io/midi.zig");
     pub const ableton_link = @import("io/ableton_link.zig");
+    pub const triple_buffer = @import("io/triple_buffer.zig");
 };
 
 const build_options = @import("build_options");
@@ -1316,6 +1317,7 @@ test {
     _ = io.midi_learn;
     _ = io.midi;
     _ = io.ableton_link;
+    _ = io.triple_buffer;
     _ = platform.ring_buffer;
     _ = platform.barrier;
     _ = platform.thread_pool;
