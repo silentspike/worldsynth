@@ -72,6 +72,7 @@ pub const io = struct {
     pub const ableton_link = @import("io/ableton_link.zig");
     pub const triple_buffer = @import("io/triple_buffer.zig");
     pub const ctl_socket = @import("io/ctl_socket.zig");
+    pub const io_uring = @import("io/io_uring.zig");
 };
 
 const build_options = @import("build_options");
@@ -1363,6 +1364,7 @@ test {
     _ = io.ableton_link;
     _ = io.triple_buffer;
     _ = io.ctl_socket;
+    _ = io.io_uring;
     _ = platform.ring_buffer;
     _ = platform.barrier;
     _ = platform.thread_pool;
