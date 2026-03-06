@@ -31,6 +31,7 @@ pub const dsp = struct {
     pub const voice_manager = @import("dsp/voice_manager.zig");
     pub const mod_matrix = @import("dsp/mod_matrix.zig");
     pub const lfo = @import("dsp/lfo.zig");
+    pub const mseg = @import("dsp/mseg.zig");
     pub const engines = struct {
         pub const formant_engine = @import("dsp/engines/formant_engine.zig");
         pub const neural = @import("dsp/engines/neural.zig");
@@ -1341,6 +1342,7 @@ test {
     _ = dsp.voice_manager;
     _ = dsp.mod_matrix;
     _ = dsp.lfo;
+    _ = dsp.mseg;
     _ = dsp.engines.formant_engine;
     _ = dsp.engines.neural;
     _ = dsp.engines.spectral;
