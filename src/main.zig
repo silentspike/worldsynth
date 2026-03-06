@@ -1118,6 +1118,7 @@ pub fn main() void {
     var test_midi_mode = false;
     var test_single_mode = false;
     var sine_mode = false;
+    var headless_mode = false;
     var device_override: ?u8 = null;
     var midi_override: ?u8 = null;
     {
@@ -1130,6 +1131,8 @@ pub fn main() void {
                 test_single_mode = true;
             } else if (std.mem.eql(u8, arg, "--test-sine")) {
                 sine_mode = true;
+            } else if (std.mem.eql(u8, arg, "--headless")) {
+                headless_mode = true;
             } else if (std.mem.eql(u8, arg, "--device")) {
                 if (args.next()) |dev_arg| {
                     device_override = std.fmt.parseInt(u8, dev_arg, 10) catch null;
@@ -1167,8 +1170,12 @@ pub fn main() void {
     std.posix.sigaction(std.posix.SIG.INT, &act, null);
     std.posix.sigaction(std.posix.SIG.TERM, &act, null);
 
-    // Audio backend detection (PipeWire first, JACK fallback)
-    var backend = io.audio_backend.AudioBackend.detect_and_init(audioCallback, midiCallback) catch |err| {
+    if (headless_mode) {
+        std.debug.print("Mode: --headless (no display required, ALSA preferred)\n", .{});
+    }
+
+    // Audio backend detection (headless: ALSA first, normal: PipeWire first)
+    var backend = io.audio_backend.AudioBackend.detect_and_init(audioCallback, midiCallback, headless_mode) catch |err| {
         std.debug.print("Audio backend init failed: {}\n", .{err});
         return;
     };

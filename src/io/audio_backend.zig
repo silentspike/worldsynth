@@ -24,29 +24,55 @@ pub const AudioBackend = union(enum) {
     alsa: alsa_mod.AlsaClient,
 
     /// Detect and initialize the best available audio backend.
-    /// Order: PipeWire first, then JACK, then ALSA hw: mmap.
+    /// Normal order: PipeWire first, then JACK, then ALSA hw: mmap.
+    /// Headless order: ALSA first (no daemon needed), then PipeWire, then JACK.
     /// Returns error.NoBackendAvailable if no backend can be initialized.
-    pub fn detect_and_init(process_fn: ?ProcessFn, midi_fn: ?MidiEventFn) error{NoBackendAvailable}!AudioBackend {
-        // PipeWire preferred — probe daemon, then init
-        if (comptime build_options.enable_pipewire) {
-            if (pw_mod.PipeWireClient.probe()) {
-                if (pw_mod.PipeWireClient.init(process_fn)) |pw|
-                    return .{ .pipewire = pw }
+    pub fn detect_and_init(process_fn: ?ProcessFn, midi_fn: ?MidiEventFn, headless: bool) error{NoBackendAvailable}!AudioBackend {
+        if (headless) {
+            // Headless: prefer ALSA hw: mmap (no sound server daemon required)
+            if (comptime build_options.enable_alsa) {
+                if (alsa_mod.AlsaClient.probe()) {
+                    if (alsa_mod.AlsaClient.init(process_fn, midi_fn)) |a|
+                        return .{ .alsa = a }
+                    else |_| {}
+                }
+            }
+            // Fallback: PipeWire (may work headless if daemon is running)
+            if (comptime build_options.enable_pipewire) {
+                if (pw_mod.PipeWireClient.probe()) {
+                    if (pw_mod.PipeWireClient.init(process_fn)) |pw|
+                        return .{ .pipewire = pw }
+                    else |_| {}
+                }
+            }
+            // Last resort: JACK
+            if (comptime build_options.enable_jack) {
+                if (jack_mod.JackAudioClient.init(process_fn, midi_fn)) |j|
+                    return .{ .jack = j }
                 else |_| {}
             }
-        }
-        // JACK fallback
-        if (comptime build_options.enable_jack) {
-            if (jack_mod.JackAudioClient.init(process_fn, midi_fn)) |j|
-                return .{ .jack = j }
-            else |_| {}
-        }
-        // ALSA hw: mmap — last resort (no sound server needed)
-        if (comptime build_options.enable_alsa) {
-            if (alsa_mod.AlsaClient.probe()) {
-                if (alsa_mod.AlsaClient.init(process_fn, midi_fn)) |a|
-                    return .{ .alsa = a }
+        } else {
+            // Normal: PipeWire preferred — probe daemon, then init
+            if (comptime build_options.enable_pipewire) {
+                if (pw_mod.PipeWireClient.probe()) {
+                    if (pw_mod.PipeWireClient.init(process_fn)) |pw|
+                        return .{ .pipewire = pw }
+                    else |_| {}
+                }
+            }
+            // JACK fallback
+            if (comptime build_options.enable_jack) {
+                if (jack_mod.JackAudioClient.init(process_fn, midi_fn)) |j|
+                    return .{ .jack = j }
                 else |_| {}
+            }
+            // ALSA hw: mmap — last resort (no sound server needed)
+            if (comptime build_options.enable_alsa) {
+                if (alsa_mod.AlsaClient.probe()) {
+                    if (alsa_mod.AlsaClient.init(process_fn, midi_fn)) |a|
+                        return .{ .alsa = a }
+                    else |_| {}
+                }
             }
         }
         return error.NoBackendAvailable;
@@ -133,7 +159,7 @@ test "detect prefers pipewire" {
     // 4. NoBackendAvailable
     if (comptime build_options.enable_pipewire or build_options.enable_jack or build_options.enable_alsa)
         return error.SkipZigTest;
-    try std.testing.expectError(error.NoBackendAvailable, AudioBackend.detect_and_init(null, null));
+    try std.testing.expectError(error.NoBackendAvailable, AudioBackend.detect_and_init(null, null, false));
 }
 
 test "fallback to jack then alsa" {
@@ -141,7 +167,14 @@ test "fallback to jack then alsa" {
     // With all disabled, confirms the fallback chain is attempted.
     if (comptime build_options.enable_pipewire or build_options.enable_jack or build_options.enable_alsa)
         return error.SkipZigTest;
-    try std.testing.expectError(error.NoBackendAvailable, AudioBackend.detect_and_init(null, null));
+    try std.testing.expectError(error.NoBackendAvailable, AudioBackend.detect_and_init(null, null, false));
+}
+
+test "headless prefers alsa" {
+    // With all backends compiled out, headless detection also falls through.
+    if (comptime build_options.enable_pipewire or build_options.enable_jack or build_options.enable_alsa)
+        return error.SkipZigTest;
+    try std.testing.expectError(error.NoBackendAvailable, AudioBackend.detect_and_init(null, null, true));
 }
 
 test "start delegates to active backend" {
