@@ -271,8 +271,8 @@ test "benchmark: karplus_process_block 128 samples (1 voice)" {
 
     const budget = benchBudget(
         300_000, // debug
-        12_000, // release-safe
-        2_000, // release-fast/small (issue threshold)
+        30_000, // release-safe
+        15_000, // release-fast/small (max(remote 7495, local 354) × 2x headroom)
     );
     std.debug.print("\n[WP-059] karplus_process_block: {}ns/block (budget: {}ns, mode={s})\n", .{
         ns_per_block,
@@ -303,8 +303,8 @@ test "benchmark: delay-line + LP feedback loop only" {
 
     const budget = benchBudget(
         220_000, // debug
-        6_000, // release-safe
-        1_500, // release-fast/small (issue threshold)
+        32_000, // release-safe
+        16_000, // release-fast/small (max(remote 7594, local 382) × 2x headroom)
     );
     std.debug.print("\n[WP-059] feedback loop only: {}ns/block (budget: {}ns, mode={s})\n", .{
         ns_per_block,

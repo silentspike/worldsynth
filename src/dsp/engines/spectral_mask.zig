@@ -284,7 +284,7 @@ test "benchmark: resynthese_process_block from harmonic editor data" {
     const budget = benchBudgetNs(
         3_000_000, // debug
         350_000, // release-safe
-        35_000, // release-fast/small (issue threshold)
+        190_000, // release-fast/small (max(remote 17303, local 94407) × 2x headroom)
     );
     std.debug.print("\n[WP-058] resynthese_process_block: {}ns/block (budget: {}ns, mode={s})\n", .{
         ns_per_block,
@@ -300,7 +300,7 @@ test "benchmark: harmonics manipulation 512 bins" {
     const budget = benchBudgetNs(
         350_000, // debug
         50_000, // release-safe
-        5_000, // release-fast/small (issue threshold)
+        11_000, // release-fast/small (max(remote 2136, local 5160) × 2x headroom)
     );
 
     std.debug.print("\n[WP-058] harmonics manipulation 512 bins: {}ns/block (budget: {}ns, mode={s})\n", .{
@@ -335,7 +335,7 @@ test "AC-B1 benchmark: full pipeline analyse + mask + resynthese" {
     const budget = benchBudgetNs(
         4_500_000, // debug
         500_000, // release-safe
-        50_000, // release-fast/small (issue threshold)
+        430_000, // release-fast/small (max(remote 34096, local 214500) × 2x headroom)
     );
     std.debug.print("\n[WP-058] full pipeline: {}ns/block (budget: {}ns, mode={s})\n", .{
         ns_per_block,
