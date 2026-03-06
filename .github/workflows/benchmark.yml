@@ -18,6 +18,11 @@ concurrency:
 
 jobs:
   benchmark:
+    # All sprint benchmark runners share the same host. Serialize only the
+    # benchmark job to avoid cross-run CPU contention corrupting measurements.
+    concurrency:
+      group: worldsynth-benchmark-host
+      cancel-in-progress: false
     timeout-minutes: 30
     runs-on:
       - self-hosted
