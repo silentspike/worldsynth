@@ -70,6 +70,7 @@ pub const io = struct {
     pub const midi = @import("io/midi.zig");
     pub const ableton_link = @import("io/ableton_link.zig");
     pub const triple_buffer = @import("io/triple_buffer.zig");
+    pub const ctl_socket = @import("io/ctl_socket.zig");
 };
 
 const build_options = @import("build_options");
@@ -1209,6 +1210,34 @@ pub fn main() void {
     }
     std.debug.print("WorldSynth active. Press Ctrl+C to quit.\n", .{});
 
+    // Start control socket server (WP-135)
+    var ctl_server: ?io.ctl_socket.CtlServer = io.ctl_socket.CtlServer.init(
+        &eng.param_state,
+        .{
+            .peak_l = &mon_peak_l,
+            .peak_r = &mon_peak_r,
+            .rms = &mon_rms_val,
+            .dc_offset = &mon_dc_offset,
+            .voices = &mon_voices,
+            .cb_last_ns = &mon_cb_last_ns,
+            .xrun_count = &mon_xrun_count,
+            .true_peak = &mon_true_peak,
+            .clip_count = &mon_clip_count,
+        },
+        "/tmp/synth.sock",
+    ) catch |err| blk: {
+        std.debug.print("Control socket init failed: {} (synth-ctl unavailable)\n", .{err});
+        break :blk null;
+    };
+    if (ctl_server) |*cs| {
+        cs.start() catch |err| {
+            std.debug.print("Control socket start failed: {}\n", .{err});
+            cs.deinit();
+            ctl_server = null;
+        };
+    }
+    if (ctl_server != null) std.debug.print("Control socket: /tmp/synth.sock\n", .{});
+
     // Spawn monitor thread (works for both JACK and PipeWire)
     const mon_thread = std.Thread.spawn(.{}, monitorThread, .{sample_rate}) catch |err| {
         std.debug.print("Monitor thread failed: {}\n", .{err});
@@ -1260,6 +1289,12 @@ pub fn main() void {
     running.store(false, .release);
     mon_thread.join();
     if (test_thread) |t| t.join();
+
+    // Stop control socket
+    if (ctl_server) |*cs| {
+        cs.stop();
+        cs.deinit();
+    }
 
     // Cleanup: stop backend first, then release engine
     global_backend = null;
@@ -1318,6 +1353,7 @@ test {
     _ = io.midi;
     _ = io.ableton_link;
     _ = io.triple_buffer;
+    _ = io.ctl_socket;
     _ = platform.ring_buffer;
     _ = platform.barrier;
     _ = platform.thread_pool;
