@@ -78,6 +78,21 @@ pub fn build(b: *std.Build) void {
     const bench_step = b.step("bench", "Build and run benchmarks");
     _ = bench_step;
 
+    // ── Target 4: synth-ctl CLI (WP-135) ────────────────────────────
+    // Standalone binary — connects to Unix socket, no engine dependencies.
+    const ctl_mod = b.createModule(.{
+        .root_source_file = b.path("src/ctl_main.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    const ctl_exe = b.addExecutable(.{
+        .name = "synth-ctl",
+        .root_module = ctl_mod,
+    });
+    b.installArtifact(ctl_exe);
+    const ctl_step = b.step("ctl", "Build synth-ctl CLI tool");
+    ctl_step.dependOn(&ctl_exe.step);
+
     // ── Tests ──────────────────────────────────────────────────────
     const test_mod = b.createModule(.{
         .root_source_file = b.path("src/main.zig"),
