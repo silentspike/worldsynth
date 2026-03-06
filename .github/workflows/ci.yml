@@ -141,6 +141,9 @@ jobs:
           # duplicated benchmark execution on the same SHA.
           WS_TEST_SHARDS_FILE=scripts/test-shards-ci-parallel.txt scripts/test-parallel.sh
 
+      - name: Test WebKit UserMessage IPC
+        run: zig build test-user-message
+
       # Build CLAP plugin artifact (verify it produces .clap)
       - name: Verify CLAP plugin artifact
         run: |

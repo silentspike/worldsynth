@@ -11,6 +11,7 @@ pub fn build(b: *std.Build) void {
     const enable_jack = b.option(bool, "jack", "Enable JACK audio backend") orelse false;
     const enable_alsa = b.option(bool, "alsa", "Enable ALSA raw hw: mmap audio backend") orelse false;
     const enable_neural = b.option(bool, "enable_neural", "Enable ONNX Runtime neural engine bindings") orelse false;
+    const enable_webkit = b.option(bool, "enable_webkit", "Enable WebKitGTK UserMessage IPC bindings") orelse true;
 
     const options = b.addOptions();
     options.addOption(bool, "enable_cuda", enable_cuda);
@@ -19,6 +20,7 @@ pub fn build(b: *std.Build) void {
     options.addOption(bool, "enable_jack", enable_jack);
     options.addOption(bool, "enable_alsa", enable_alsa);
     options.addOption(bool, "enable_neural", enable_neural);
+    options.addOption(bool, "enable_webkit", enable_webkit);
 
     // ── Root Module ──────────────────────────────────────────────
     const root_mod = b.createModule(.{
@@ -31,7 +33,7 @@ pub fn build(b: *std.Build) void {
     // ── Optional System Libraries ──────────────────────────────────
     // JACK/PipeWire shared libraries need libc (pthreads, TLS init).
     // Without libc, Zig skips glibc startup → segfault in JACK init.
-    if (enable_jack or enable_pipewire or enable_alsa or enable_neural or enable_cuda or enable_tensorrt) {
+    if (enable_jack or enable_pipewire or enable_alsa or enable_neural or enable_cuda or enable_tensorrt or enable_webkit) {
         root_mod.link_libc = true;
     }
     if (enable_cuda) {
@@ -51,6 +53,12 @@ pub fn build(b: *std.Build) void {
     }
     if (enable_neural) {
         root_mod.linkSystemLibrary("onnxruntime", .{});
+    }
+    if (enable_webkit) {
+        root_mod.linkSystemLibrary("webkit2gtk-4.1", .{});
+        root_mod.linkSystemLibrary("glib-2.0", .{});
+        root_mod.linkSystemLibrary("gobject-2.0", .{});
+        root_mod.linkSystemLibrary("gio-2.0", .{});
     }
 
     // ── Target 1: Standalone executable ────────────────────────────
@@ -78,7 +86,7 @@ pub fn build(b: *std.Build) void {
     });
     test_mod.addOptions("build_options", options);
 
-    if (enable_jack or enable_pipewire or enable_alsa or enable_neural or enable_cuda or enable_tensorrt) {
+    if (enable_jack or enable_pipewire or enable_alsa or enable_neural or enable_cuda or enable_tensorrt or enable_webkit) {
         test_mod.link_libc = true;
     }
     if (enable_cuda) {
@@ -99,6 +107,12 @@ pub fn build(b: *std.Build) void {
     if (enable_neural) {
         test_mod.linkSystemLibrary("onnxruntime", .{});
     }
+    if (enable_webkit) {
+        test_mod.linkSystemLibrary("webkit2gtk-4.1", .{});
+        test_mod.linkSystemLibrary("glib-2.0", .{});
+        test_mod.linkSystemLibrary("gobject-2.0", .{});
+        test_mod.linkSystemLibrary("gio-2.0", .{});
+    }
 
     const unit_tests = b.addTest(.{
         .root_module = test_mod,
@@ -107,6 +121,35 @@ pub fn build(b: *std.Build) void {
     const run_tests = b.addRunArtifact(unit_tests);
     const test_step = b.step("test", "Run unit tests");
     test_step.dependOn(&run_tests.step);
+
+    const user_message_test_mod = b.createModule(.{
+        .root_source_file = b.path("src/user_message_test_root.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    user_message_test_mod.addOptions("build_options", options);
+    if (enable_webkit) {
+        user_message_test_mod.link_libc = true;
+        user_message_test_mod.linkSystemLibrary("webkit2gtk-4.1", .{});
+        user_message_test_mod.linkSystemLibrary("glib-2.0", .{});
+        user_message_test_mod.linkSystemLibrary("gobject-2.0", .{});
+        user_message_test_mod.linkSystemLibrary("gio-2.0", .{});
+    }
+
+    const user_message_tests = b.addTest(.{
+        .root_module = user_message_test_mod,
+    });
+    const run_user_message_tests = b.addRunArtifact(user_message_tests);
+    const test_user_message_step = b.step("test-user-message", "Run WebKit UserMessage IPC tests");
+    test_user_message_step.dependOn(&run_user_message_tests.step);
+
+    const user_message_bench = b.addTest(.{
+        .root_module = user_message_test_mod,
+        .filters = &.{"benchmark: WP-029"},
+    });
+    const run_user_message_bench = b.addRunArtifact(user_message_bench);
+    const bench_user_message_step = b.step("bench-user-message", "Run WP-029 UserMessage benchmarks");
+    bench_user_message_step.dependOn(&run_user_message_bench.step);
 
     // Install test binary to zig-out/bin/ for local benchmark execution
     b.installArtifact(unit_tests);
