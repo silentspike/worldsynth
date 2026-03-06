@@ -4,3 +4,4 @@ pub const enable_pipewire = false;
 pub const enable_jack = false;
 pub const enable_alsa = false;
 pub const enable_neural = false;
+pub const enable_webkit = true;

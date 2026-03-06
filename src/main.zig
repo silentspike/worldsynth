@@ -65,6 +65,7 @@ pub const io = struct {
     pub const midi_learn = @import("io/midi_learn.zig");
     pub const midi = @import("io/midi.zig");
     pub const ableton_link = @import("io/ableton_link.zig");
+    pub const user_message = @import("io/user_message.zig");
 };
 
 const build_options = @import("build_options");

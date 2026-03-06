@@ -43,6 +43,11 @@ jobs:
             --test-filter 'benchmark:' \
             > benchmark-full-output.txt 2>&1
           EXIT_CODE=$?
+          zig build bench-user-message --cache-dir .zig-cache --global-cache-dir .zig-global-cache >> benchmark-full-output.txt 2>&1
+          USER_MESSAGE_EXIT_CODE=$?
+          if [ "$EXIT_CODE" -eq 0 ] && [ "$USER_MESSAGE_EXIT_CODE" -ne 0 ]; then
+            EXIT_CODE=$USER_MESSAGE_EXIT_CODE
+          fi
           set -e
 
           cat benchmark-full-output.txt
