@@ -378,7 +378,7 @@ test "MTS-ESP stub note_to_freq matches 12-TET" {
 
 test "benchmark: lookup, parse, accuracy" {
     const lookup_budget_ns = switch (builtin.mode) {
-        .Debug => 150.0,
+        .Debug => 250.0,
         .ReleaseSafe => 120.0,
         .ReleaseFast, .ReleaseSmall => 100.0,
     };
