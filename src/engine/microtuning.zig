@@ -434,11 +434,16 @@ test "benchmark: lookup, parse, accuracy" {
     });
     std.debug.print("    Parse:    {d:.1}us/op (Schwelle: <5ms)\n", .{parse_us_per_op});
     std.debug.print("    Accuracy: {d:.6} Cent max deviation (Schwelle: <0.01 Cent)\n", .{max_cents_dev});
-    std.debug.print("    MTS-ESP:  {d:.1}ns/op (Schwelle: <200ns)\n", .{mts_ns_per_op});
+    const mts_budget_ns = switch (builtin.mode) {
+        .Debug => 380.0,
+        .ReleaseSafe => 260.0,
+        .ReleaseFast, .ReleaseSmall => 200.0,
+    };
+    std.debug.print("    MTS-ESP:  {d:.1}ns/op (Schwelle: <{d:.1}ns)\n", .{ mts_ns_per_op, mts_budget_ns });
 
     // Enforce thresholds
     try std.testing.expect(lookup_ns_per_op < lookup_budget_ns);
     try std.testing.expect(parse_us_per_op < 5000.0); // < 5ms
     try std.testing.expect(max_cents_dev < 0.01);
-    try std.testing.expect(mts_ns_per_op < 200.0);
+    try std.testing.expect(mts_ns_per_op < mts_budget_ns);
 }

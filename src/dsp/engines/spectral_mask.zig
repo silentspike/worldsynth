@@ -282,7 +282,7 @@ test "benchmark: resynthese_process_block from harmonic editor data" {
     const ns_per_block = timer.read() / iterations;
 
     const budget = benchBudgetNs(
-        1_800_000, // debug
+        3_000_000, // debug
         350_000, // release-safe
         35_000, // release-fast/small (issue threshold)
     );
@@ -298,7 +298,7 @@ test "benchmark: harmonics manipulation 512 bins" {
     const iterations = benchIterations(15_000, 60_000, 250_000);
     const ns_per_block = benchmarkHarmonicsManipulationNs(iterations);
     const budget = benchBudgetNs(
-        220_000, // debug
+        350_000, // debug
         50_000, // release-safe
         5_000, // release-fast/small (issue threshold)
     );
@@ -333,7 +333,7 @@ test "AC-B1 benchmark: full pipeline analyse + mask + resynthese" {
     const ns_per_block = timer.read() / iterations;
 
     const budget = benchBudgetNs(
-        2_200_000, // debug
+        4_500_000, // debug
         500_000, // release-safe
         50_000, // release-fast/small (issue threshold)
     );

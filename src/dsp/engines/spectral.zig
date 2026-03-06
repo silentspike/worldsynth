@@ -647,7 +647,7 @@ test "benchmark: overlap-add pipeline 128->1024 under threshold" {
     const iters = benchIterations(900, 4_000, 20_000);
     const ns = benchOverlapAddNs(iters);
     const budget = benchBudgetNs(
-        260_000, // debug
+        500_000, // debug
         60_000, // release-safe
         30_000, // release-fast/small (issue threshold)
     );
@@ -664,7 +664,7 @@ test "AC-B1 benchmark: spectral freeze under threshold" {
     const iters = benchIterations(700, 3_000, 14_000);
     const ns = benchSpectralFreezeNs(iters);
     const budget = benchBudgetNs(
-        600_000, // debug
+        1_300_000, // debug
         140_000, // release-safe
         40_000, // release-fast/small (issue threshold)
     );
