@@ -34,13 +34,18 @@ pub fn detect_cpu_count() u8 {
 
 pub fn detect_cuda_available() bool {
     // Keep startup resilient on systems without NVIDIA drivers.
-    const candidates = [_][]const u8{
-        "libcuda.so",
-        "libcuda.so.1",
+    // Use a simple file-existence check instead of DynLib.open() to avoid
+    // potential segfaults in containerised environments (LXC/Docker).
+    const lib_paths = [_][]const u8{
+        "/usr/lib/x86_64-linux-gnu/libcuda.so",
+        "/usr/lib/x86_64-linux-gnu/libcuda.so.1",
+        "/usr/lib/libcuda.so",
+        "/usr/lib/libcuda.so.1",
+        "/usr/lib64/libcuda.so",
+        "/usr/lib64/libcuda.so.1",
     };
-    for (candidates) |name| {
-        var lib = std.DynLib.open(name) catch continue;
-        lib.close();
+    for (lib_paths) |path| {
+        std.fs.accessAbsolute(path, .{}) catch continue;
         return true;
     }
     return false;

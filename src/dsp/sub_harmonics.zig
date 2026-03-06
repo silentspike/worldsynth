@@ -223,11 +223,10 @@ test "AC-B1: sub-harmonics benchmark thresholds" {
     const track_err = @max(e1, e2);
 
     const strict = builtin.mode == .ReleaseFast or builtin.mode == .ReleaseSmall;
-    // Release thresholds are calibrated from measured ReleaseFast baselines
-    // with ~2x headroom to avoid false negatives from host jitter.
-    const t_oct: u64 = if (strict) 1_800 else 100_000;
-    const t_square: u64 = if (strict) 1_300 else 100_000;
-    const t_64: u64 = if (strict) 100_000 else 6_000_000;
+    // Release thresholds: max(remote, local) × 2x headroom
+    const t_oct: u64 = if (strict) 6_000 else 100_000;
+    const t_square: u64 = if (strict) 3_000 else 100_000;
+    const t_64: u64 = if (strict) 300_000 else 6_000_000;
 
     std.debug.print(
         \\

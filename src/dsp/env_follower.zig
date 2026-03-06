@@ -228,8 +228,10 @@ test "AC-B1: envelope follower benchmark thresholds" {
     const accuracy_err = sine_accuracy_error_percent();
 
     const strict = builtin.mode == .ReleaseFast or builtin.mode == .ReleaseSmall;
-    const t_block: u64 = if (strict) 1_600 else 100_000;
-    const t_8: u64 = if (strict) 12_000 else 800_000;
+    // max(remote 752, local 2338) × 2x headroom ≈ 5000ns
+    const t_block: u64 = if (strict) 5_000 else 100_000;
+    // max(remote 6215, local 25595) × 2x headroom ≈ 52000ns
+    const t_8: u64 = if (strict) 52_000 else 800_000;
 
     std.debug.print(
         \\

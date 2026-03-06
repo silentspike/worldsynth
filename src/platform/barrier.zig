@@ -280,11 +280,12 @@ test "AC-B1: barrier benchmarks" {
     const reset_ns = try bench_reset_ns();
     const full_cycle_ns = try bench_full_cycle_ns(8);
 
-    const wait_4_threshold: u64 = if (benchmark_enforced) 200 else 20_000;
-    const wait_8_threshold: u64 = if (benchmark_enforced) 500 else 50_000;
-    const reset_threshold: u64 = if (benchmark_enforced) 50 else 500;
-    const full_cycle_threshold: u64 = if (benchmark_enforced) 1_000 else 5_000;
-    const spin_threshold: u64 = if (benchmark_enforced) 100 else 2_000;
+    // Release thresholds: max(remote, local) × 2x headroom
+    const wait_4_threshold: u64 = if (benchmark_enforced) 1_000 else 20_000;
+    const wait_8_threshold: u64 = if (benchmark_enforced) 2_000 else 50_000;
+    const reset_threshold: u64 = if (benchmark_enforced) 200 else 500;
+    const full_cycle_threshold: u64 = if (benchmark_enforced) 3_000 else 5_000;
+    const spin_threshold: u64 = if (benchmark_enforced) 300 else 2_000;
 
     std.debug.print(
         "\n  [WP-023] Barrier benchmarks\n" ++
