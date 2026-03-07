@@ -1,5 +1,6 @@
 const std = @import("std");
 const builtin = @import("builtin");
+const tables_approx = @import("../../engine/tables_approx.zig");
 
 // -- Physical Modeling: Karplus-Strong (WP-059) -------------------------------
 // Plucked-string synthesis:
@@ -179,7 +180,343 @@ fn sawBlock(phase_ptr: *f32, phase_inc: f32, out: *[BLOCK_SIZE]f32) void {
     phase_ptr.* = phase;
 }
 
-// -- Tests --------------------------------------------------------------------
+// -- Bow Model (WP-060): Bowed String via Friction + Newton-Raphson -----------
+
+/// Smith (1986) friction function: force applied by bow.
+inline fn friction(v_diff: f32, pressure: f32) f32 {
+    const a = pressure * 100.0 + 0.1;
+    const sqrt_2a: f32 = @sqrt(2.0 * a);
+    const av2 = a * v_diff * v_diff;
+    return sqrt_2a * v_diff * tables_approx.exp_fast(-av2 + 0.5);
+}
+
+/// Derivative of friction w.r.t. v_diff for Newton-Raphson.
+inline fn friction_deriv(v_diff: f32, pressure: f32) f32 {
+    const a = pressure * 100.0 + 0.1;
+    const sqrt_2a: f32 = @sqrt(2.0 * a);
+    const av2 = a * v_diff * v_diff;
+    return sqrt_2a * (1.0 - 2.0 * av2) * tables_approx.exp_fast(-av2 + 0.5);
+}
+
+pub const BowModel = struct {
+    const Self = @This();
+
+    sample_rate: f32,
+    delay_line: [MAX_DELAY]f32,
+    write_pos: usize,
+    delay_len: usize,
+    damping: f32,
+    bow_velocity: f32,
+    bow_pressure: f32,
+    last_v_s: f32,
+
+    pub fn init(sample_rate: f32) Self {
+        return .{
+            .sample_rate = clampSampleRate(sample_rate),
+            .delay_line = .{0.0} ** MAX_DELAY,
+            .write_pos = 0,
+            .delay_len = 100,
+            .damping = 0.99,
+            .bow_velocity = 0.0,
+            .bow_pressure = 0.5,
+            .last_v_s = 0.0,
+        };
+    }
+
+    pub fn reset(self: *Self) void {
+        self.delay_line = .{0.0} ** MAX_DELAY;
+        self.write_pos = 0;
+        self.last_v_s = 0.0;
+    }
+
+    pub fn set_frequency(self: *Self, hz: f32) void {
+        if (!std.math.isFinite(hz) or hz <= 0.0) return;
+        const target: i32 = @intFromFloat(@round(self.sample_rate / hz));
+        self.delay_len = clampDelayLen(@intCast(@max(2, target)));
+    }
+
+    pub fn set_damping(self: *Self, damping: f32) void {
+        self.damping = clampDamping(damping);
+    }
+
+    pub fn set_bow(self: *Self, velocity: f32, pressure: f32) void {
+        self.bow_velocity = std.math.clamp(if (std.math.isFinite(velocity)) velocity else 0.0, 0.0, 1.0);
+        self.bow_pressure = std.math.clamp(if (std.math.isFinite(pressure)) pressure else 0.5, 0.0, 1.0);
+    }
+
+    pub inline fn process_sample(self: *Self) f32 {
+        @setFloatMode(.optimized);
+        // Read from waveguide delay line (2-tap LP)
+        const read_idx = (self.write_pos -% self.delay_len) & DELAY_MASK;
+        const prev_idx = (read_idx -% 1) & DELAY_MASK;
+        const delay_out = 0.5 * (self.delay_line[read_idx] + self.delay_line[prev_idx]) * self.damping;
+
+        // Newton-Raphson: solve v_s = delay_out + friction(bow_vel - v_s, pressure)
+        var v_s = self.last_v_s;
+        inline for (0..4) |_| {
+            const v_diff = self.bow_velocity - v_s;
+            const f_val = v_s - delay_out - friction(v_diff, self.bow_pressure);
+            const f_deriv = 1.0 + friction_deriv(v_diff, self.bow_pressure);
+            if (@abs(f_deriv) > 1e-10) {
+                v_s -= f_val / f_deriv;
+            }
+        }
+        v_s = std.math.clamp(v_s, -1.0, 1.0);
+        self.last_v_s = v_s;
+
+        // Write to delay line
+        const write_idx = self.write_pos & DELAY_MASK;
+        self.delay_line[write_idx] = v_s;
+        self.write_pos = (self.write_pos +% 1) & DELAY_MASK;
+
+        return v_s;
+    }
+
+    pub fn process_block(self: *Self, out: *[BLOCK_SIZE]f32) void {
+        for (out) |*s| {
+            s.* = self.process_sample();
+        }
+    }
+};
+
+// -- Blow Model (WP-060): Jet-Drive + Tube Resonator -------------------------
+
+/// Cubic jet-drive nonlinearity (tanh-like).
+inline fn jet_drive(x: f32) f32 {
+    const clamped = std.math.clamp(x, -1.0, 1.0);
+    return clamped - (clamped * clamped * clamped) / 3.0;
+}
+
+pub const BlowModel = struct {
+    const Self = @This();
+
+    sample_rate: f32,
+    delay_line: [MAX_DELAY]f32,
+    write_pos: usize,
+    delay_len: usize,
+    damping: f32,
+    blow_pressure: f32,
+    reed_stiffness: f32,
+    noise_state: u64,
+
+    pub fn init(sample_rate: f32) Self {
+        return .{
+            .sample_rate = clampSampleRate(sample_rate),
+            .delay_line = .{0.0} ** MAX_DELAY,
+            .write_pos = 0,
+            .delay_len = 100,
+            .damping = 0.99,
+            .blow_pressure = 0.0,
+            .reed_stiffness = 0.5,
+            .noise_state = 0xDEADBEEFCAFE1234,
+        };
+    }
+
+    pub fn reset(self: *Self) void {
+        self.delay_line = .{0.0} ** MAX_DELAY;
+        self.write_pos = 0;
+    }
+
+    pub fn set_frequency(self: *Self, hz: f32) void {
+        if (!std.math.isFinite(hz) or hz <= 0.0) return;
+        const target: i32 = @intFromFloat(@round(self.sample_rate / hz));
+        self.delay_len = clampDelayLen(@intCast(@max(2, target)));
+    }
+
+    pub fn set_damping(self: *Self, damping: f32) void {
+        self.damping = clampDamping(damping);
+    }
+
+    pub fn set_blow(self: *Self, pressure: f32, stiffness: f32) void {
+        self.blow_pressure = std.math.clamp(if (std.math.isFinite(pressure)) pressure else 0.0, 0.0, 1.0);
+        self.reed_stiffness = std.math.clamp(if (std.math.isFinite(stiffness)) stiffness else 0.5, 0.0, 1.0);
+    }
+
+    fn nextNoise(self: *Self) f32 {
+        var x = self.noise_state;
+        x ^= x >> 12;
+        x ^= x << 25;
+        x ^= x >> 27;
+        self.noise_state = x;
+        const scrambled = x *% 2685821657736338717;
+        const unit = @as(f64, @floatFromInt(scrambled)) /
+            @as(f64, @floatFromInt(std.math.maxInt(u64)));
+        return @floatCast(unit * 2.0 - 1.0);
+    }
+
+    pub inline fn process_sample(self: *Self) f32 {
+        @setFloatMode(.optimized);
+        // Read from tube end: LP-filtered delayed wave
+        const read_idx = (self.write_pos -% self.delay_len) & DELAY_MASK;
+        const prev_idx = (read_idx -% 1) & DELAY_MASK;
+        const delayed = 0.5 * (self.delay_line[read_idx] + self.delay_line[prev_idx]);
+
+        // Reed/jet excitation (only when blowing)
+        var excitation: f32 = 0.0;
+        if (self.blow_pressure > 0.0) {
+            const noise = self.nextNoise() * 0.02;
+            const pressure_diff = self.blow_pressure + noise - delayed * self.reed_stiffness;
+            excitation = jet_drive(pressure_diff) * self.blow_pressure;
+        }
+
+        // Feedback loop: damped delay + excitation injection
+        const write_idx = self.write_pos & DELAY_MASK;
+        self.delay_line[write_idx] = delayed * self.damping + excitation * 0.3;
+        self.write_pos = (self.write_pos +% 1) & DELAY_MASK;
+
+        return delayed;
+    }
+
+    pub fn process_block(self: *Self, out: *[BLOCK_SIZE]f32) void {
+        for (out) |*s| {
+            s.* = self.process_sample();
+        }
+    }
+};
+
+// -- Strike Model (WP-060): Hammer + String Decay ----------------------------
+
+pub const StrikeModel = struct {
+    const Self = @This();
+
+    sample_rate: f32,
+    delay_line: [MAX_DELAY]f32,
+    write_pos: usize,
+    delay_len: usize,
+    damping: f32,
+    excited: bool,
+
+    pub fn init(sample_rate: f32) Self {
+        return .{
+            .sample_rate = clampSampleRate(sample_rate),
+            .delay_line = .{0.0} ** MAX_DELAY,
+            .write_pos = 0,
+            .delay_len = 100,
+            .damping = 0.99,
+            .excited = false,
+        };
+    }
+
+    pub fn reset(self: *Self) void {
+        self.delay_line = .{0.0} ** MAX_DELAY;
+        self.write_pos = 0;
+        self.excited = false;
+    }
+
+    pub fn set_frequency(self: *Self, hz: f32) void {
+        if (!std.math.isFinite(hz) or hz <= 0.0) return;
+        const target: i32 = @intFromFloat(@round(self.sample_rate / hz));
+        self.delay_len = clampDelayLen(@intCast(@max(2, target)));
+    }
+
+    pub fn set_damping(self: *Self, damping: f32) void {
+        self.damping = clampDamping(damping);
+    }
+
+    /// Excite with Hanning-windowed impulse. Hardness controls duration:
+    /// 1.0 = very short (2 samples), 0.0 = very soft (200 samples).
+    pub fn strike(self: *Self, velocity: f32, hardness: f32) void {
+        const vel = std.math.clamp(if (std.math.isFinite(velocity)) velocity else 0.0, 0.0, 1.0);
+        if (vel <= 0.0) {
+            self.reset();
+            return;
+        }
+        const hard = std.math.clamp(if (std.math.isFinite(hardness)) hardness else 0.5, 0.0, 1.0);
+        const len_f = 2.0 + (1.0 - hard) * 198.0;
+        const max_len = @as(f32, @floatFromInt(self.delay_len));
+        const exciter_len: usize = @intFromFloat(@max(2.0, @min(len_f, max_len)));
+
+        for (0..MAX_DELAY) |i| {
+            if (i < exciter_len) {
+                const t: f32 = @as(f32, @floatFromInt(i)) / @as(f32, @floatFromInt(exciter_len));
+                const window = 0.5 * (1.0 - @cos(2.0 * std.math.pi * t));
+                self.delay_line[i] = window * vel;
+            } else {
+                self.delay_line[i] = 0.0;
+            }
+        }
+        self.write_pos = exciter_len & DELAY_MASK;
+        self.excited = true;
+    }
+
+    inline fn feedback_step(self: *Self) f32 {
+        const write_idx = self.write_pos & DELAY_MASK;
+        const read_idx = (self.write_pos -% self.delay_len) & DELAY_MASK;
+        const prev_idx = (read_idx -% 1) & DELAY_MASK;
+
+        const averaged = 0.5 * (self.delay_line[read_idx] + self.delay_line[prev_idx]);
+        const next = averaged * self.damping;
+        self.delay_line[write_idx] = next;
+        self.write_pos = (self.write_pos +% 1) & DELAY_MASK;
+        return next;
+    }
+
+    pub fn process_sample(self: *Self) f32 {
+        if (!self.excited) return 0.0;
+        return self.feedback_step();
+    }
+
+    pub fn process_block(self: *Self, out: *[BLOCK_SIZE]f32) void {
+        if (!self.excited) {
+            @memset(out, 0.0);
+            return;
+        }
+        for (out) |*s| {
+            s.* = self.feedback_step();
+        }
+    }
+};
+
+// -- Physical Engine Union (WP-060) -------------------------------------------
+
+pub const PhysicalMode = enum(u2) {
+    karplus,
+    bow,
+    blow,
+    strike,
+};
+
+pub const PhysicalEngine = union(enum) {
+    karplus: KarplusStrong,
+    bow: BowModel,
+    blow: BlowModel,
+    strike: StrikeModel,
+
+    pub fn init(mode: PhysicalMode, sample_rate: f32) PhysicalEngine {
+        return switch (mode) {
+            .karplus => .{ .karplus = KarplusStrong.init(sample_rate) },
+            .bow => .{ .bow = BowModel.init(sample_rate) },
+            .blow => .{ .blow = BlowModel.init(sample_rate) },
+            .strike => .{ .strike = StrikeModel.init(sample_rate) },
+        };
+    }
+
+    pub fn set_frequency(self: *PhysicalEngine, hz: f32) void {
+        switch (self.*) {
+            inline else => |*model| model.set_frequency(hz),
+        }
+    }
+
+    pub fn set_damping(self: *PhysicalEngine, damping: f32) void {
+        switch (self.*) {
+            inline else => |*model| model.set_damping(damping),
+        }
+    }
+
+    pub fn process_sample(self: *PhysicalEngine) f32 {
+        switch (self.*) {
+            inline else => |*model| return model.process_sample(),
+        }
+    }
+
+    pub fn process_block(self: *PhysicalEngine, out: *[BLOCK_SIZE]f32) void {
+        switch (self.*) {
+            inline else => |*model| model.process_block(out),
+        }
+    }
+};
+
+// -- Tests: Karplus-Strong (WP-059) -------------------------------------------
 
 test "AC-N1: no excite produces silence" {
     var ks = KarplusStrong.init(44_100.0);
@@ -353,4 +690,169 @@ test "benchmark: karplus cost is in similar range to saw oscillator" {
         .{ ks_ns, saw_ns, ratio, @tagName(builtin.mode) },
     );
     try std.testing.expect(saw_ns > 0);
+}
+
+// -- Tests: Bow/Blow/Strike (WP-060) -----------------------------------------
+
+test "AC-1: Bow sustain output stays above threshold" {
+    var bow = BowModel.init(44_100.0);
+    bow.set_frequency(220.0);
+    bow.set_damping(0.995);
+    bow.set_bow(0.5, 0.5);
+
+    // Run for 4 seconds
+    const total_samples: usize = 44_100 * 4;
+    var out: [BLOCK_SIZE]f32 = undefined;
+    var last_rms: f64 = 0.0;
+
+    const blocks = total_samples / BLOCK_SIZE;
+    for (0..blocks) |b| {
+        bow.process_block(&out);
+        // Measure RMS of last second (blocks 3*44100/128 .. end)
+        if (b >= blocks - (44_100 / BLOCK_SIZE)) {
+            var sum_sq: f64 = 0.0;
+            for (out) |s| {
+                sum_sq += @as(f64, s) * @as(f64, s);
+            }
+            last_rms += sum_sq;
+        }
+    }
+    last_rms = @sqrt(last_rms / @as(f64, @floatFromInt(44_100)));
+
+    std.debug.print("\n[WP-060] Bow sustain RMS (last 1s): {d:.6}\n", .{last_rms});
+    try std.testing.expect(last_rms > 0.001);
+}
+
+test "AC-2: Blow pitch follows delay length" {
+    const sample_rate: f32 = 44_100.0;
+    var blow = BlowModel.init(sample_rate);
+    blow.set_frequency(200.0);
+    blow.set_damping(0.998);
+
+    // Deterministic impulse excitation (same technique as KarplusStrong AC-2)
+    blow.reset();
+    blow.delay_line[0] = 1.0;
+    blow.write_pos = blow.delay_len;
+
+    // Process with no blowing — pure delay-line resonance
+    var buffer: [24_576]f32 = undefined;
+    for (&buffer) |*s| {
+        s.* = blow.process_sample();
+    }
+
+    const analysis = buffer[4096..];
+    const estimated = estimateFrequencyAroundLag(analysis, sample_rate, blow.delay_len, 8);
+    const expected = sample_rate / @as(f32, @floatFromInt(blow.delay_len));
+
+    std.debug.print("\n[WP-060] Blow delay_len={}, expected={d:.1}Hz, estimated={d:.1}Hz\n", .{
+        blow.delay_len, expected, estimated,
+    });
+    try std.testing.expect(@abs(estimated - expected) <= 1.0);
+}
+
+test "AC-N1: Strike decays to silence" {
+    var strike_m = StrikeModel.init(44_100.0);
+    strike_m.set_frequency(440.0);
+    strike_m.set_damping(0.995);
+    strike_m.strike(1.0, 0.5);
+
+    // Capture 2 seconds
+    const total: usize = 44_100 * 2;
+    var out: [total]f32 = undefined;
+    for (&out) |*s| {
+        s.* = strike_m.process_sample();
+    }
+
+    // RMS of first 2048 samples vs last 2048 samples
+    const seg: usize = 2048;
+    var first_sq: f64 = 0.0;
+    for (out[0..seg]) |s| {
+        first_sq += @as(f64, s) * @as(f64, s);
+    }
+    const first_rms = @sqrt(first_sq / @as(f64, seg));
+
+    var last_sq: f64 = 0.0;
+    for (out[total - seg ..]) |s| {
+        last_sq += @as(f64, s) * @as(f64, s);
+    }
+    const last_rms = @sqrt(last_sq / @as(f64, seg));
+
+    std.debug.print("\n[WP-060] Strike first_rms={d:.6}, last_rms={d:.6}\n", .{ first_rms, last_rms });
+    try std.testing.expect(first_rms > 0.001);
+    try std.testing.expect(last_rms < first_rms * 0.1);
+}
+
+test "benchmark: bow_process_block 128 samples" {
+    var bow = BowModel.init(44_100.0);
+    bow.set_frequency(220.0);
+    bow.set_damping(0.995);
+    bow.set_bow(0.5, 0.5);
+    var out: [BLOCK_SIZE]f32 = undefined;
+
+    for (0..2000) |_| bow.process_block(&out);
+
+    const iterations = benchIterations(10_000, 100_000, 500_000);
+    var timer = std.time.Timer.start() catch unreachable;
+    for (0..iterations) |_| {
+        bow.process_block(&out);
+        std.mem.doNotOptimizeAway(&out);
+    }
+    const ns = timer.read() / iterations;
+
+    const budget = benchBudget(400_000, 40_000, 24_000);
+    const pass = ns < budget;
+    std.debug.print("\n[WP-060] bow: {}ns/block (budget: {}ns, mode={s}) {s}\n", .{
+        ns, budget, @tagName(builtin.mode), if (pass) "PASS" else "<<< FAIL >>>",
+    });
+    try std.testing.expect(pass);
+}
+
+test "benchmark: blow_process_block 128 samples" {
+    var blow = BlowModel.init(44_100.0);
+    blow.set_frequency(220.0);
+    blow.set_damping(0.995);
+    blow.set_blow(0.6, 0.5);
+    var out: [BLOCK_SIZE]f32 = undefined;
+
+    for (0..2000) |_| blow.process_block(&out);
+
+    const iterations = benchIterations(10_000, 150_000, 800_000);
+    var timer = std.time.Timer.start() catch unreachable;
+    for (0..iterations) |_| {
+        blow.process_block(&out);
+        std.mem.doNotOptimizeAway(&out);
+    }
+    const ns = timer.read() / iterations;
+
+    const budget = benchBudget(250_000, 25_000, 5_000);
+    const pass = ns < budget;
+    std.debug.print("\n[WP-060] blow: {}ns/block (budget: {}ns, mode={s}) {s}\n", .{
+        ns, budget, @tagName(builtin.mode), if (pass) "PASS" else "<<< FAIL >>>",
+    });
+    try std.testing.expect(pass);
+}
+
+test "benchmark: strike_process_block 128 samples" {
+    var strike_m = StrikeModel.init(44_100.0);
+    strike_m.set_frequency(440.0);
+    strike_m.set_damping(0.997);
+    strike_m.strike(1.0, 0.5);
+    var out: [BLOCK_SIZE]f32 = undefined;
+
+    for (0..2000) |_| strike_m.process_block(&out);
+
+    const iterations = benchIterations(20_000, 250_000, 800_000);
+    var timer = std.time.Timer.start() catch unreachable;
+    for (0..iterations) |_| {
+        strike_m.process_block(&out);
+        std.mem.doNotOptimizeAway(&out);
+    }
+    const ns = timer.read() / iterations;
+
+    const budget = benchBudget(150_000, 15_000, 16_000);
+    const pass = ns < budget;
+    std.debug.print("\n[WP-060] strike: {}ns/block (budget: {}ns, mode={s}) {s}\n", .{
+        ns, budget, @tagName(builtin.mode), if (pass) "PASS" else "<<< FAIL >>>",
+    });
+    try std.testing.expect(pass);
 }
