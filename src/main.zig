@@ -61,6 +61,7 @@ pub const platform = struct {
     pub const thread_pool = @import("platform/thread_pool.zig");
     pub const clap_thread_pool = @import("platform/clap_thread_pool.zig");
     pub const hw_detect = @import("platform/hw_detect.zig");
+    pub const logging = @import("platform/logging.zig");
 };
 
 pub const io = struct {
@@ -1373,4 +1374,5 @@ test {
     _ = platform.thread_pool;
     _ = platform.clap_thread_pool;
     _ = platform.hw_detect;
+    _ = platform.logging;
 }
