@@ -12,6 +12,7 @@ pub fn build(b: *std.Build) void {
     const enable_alsa = b.option(bool, "alsa", "Enable ALSA raw hw: mmap audio backend") orelse false;
     const enable_neural = b.option(bool, "enable_neural", "Enable ONNX Runtime neural engine bindings") orelse false;
     const enable_webkit = b.option(bool, "enable_webkit", "Enable WebKitGTK UserMessage IPC bindings") orelse true;
+    const test_filter = b.option([]const u8, "test-filter", "Filter test names (substring match)");
 
     const options = b.addOptions();
     options.addOption(bool, "enable_cuda", enable_cuda);
@@ -131,6 +132,7 @@ pub fn build(b: *std.Build) void {
 
     const unit_tests = b.addTest(.{
         .root_module = test_mod,
+        .filters = if (test_filter) |f| &.{f} else &.{},
     });
 
     const run_tests = b.addRunArtifact(unit_tests);
