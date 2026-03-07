@@ -44,6 +44,7 @@ pub const dsp = struct {
     pub const effects = struct {
         pub const eq = @import("dsp/effects/eq.zig");
         pub const reverb_fdn = @import("dsp/effects/reverb_fdn.zig");
+        pub const delay = @import("dsp/effects/delay.zig");
     };
     pub const utilities = struct {
         pub const dc_blocker = @import("dsp/utilities/dc_blocker.zig");
@@ -1355,6 +1356,7 @@ test {
     _ = dsp.engines.physical;
     _ = dsp.effects.eq;
     _ = dsp.effects.reverb_fdn;
+    _ = dsp.effects.delay;
     _ = dsp.utilities.dc_blocker;
     _ = dsp.utilities.oversampling;
     _ = dsp.sub_harmonics;
