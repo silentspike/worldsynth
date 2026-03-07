@@ -42,6 +42,7 @@ pub const dsp = struct {
         pub const spectral_mask = @import("dsp/engines/spectral_mask.zig");
         pub const physical = @import("dsp/engines/physical.zig");
         pub const wavetable = @import("dsp/engines/wavetable.zig");
+        pub const phase_distortion = @import("dsp/engines/phase_distortion.zig");
     };
     pub const effects = struct {
         pub const eq = @import("dsp/effects/eq.zig");
@@ -1364,6 +1365,7 @@ test {
     _ = dsp.engines.spectral_mask;
     _ = dsp.engines.physical;
     _ = dsp.engines.wavetable;
+    _ = dsp.engines.phase_distortion;
     _ = dsp.effects.eq;
     _ = dsp.effects.reverb_fdn;
     _ = dsp.effects.delay;
