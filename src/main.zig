@@ -45,6 +45,7 @@ pub const dsp = struct {
         pub const wavetable = @import("dsp/engines/wavetable.zig");
         pub const phase_distortion = @import("dsp/engines/phase_distortion.zig");
         pub const genetic = @import("dsp/engines/genetic.zig");
+        pub const engine_interface = @import("dsp/engines/engine_interface.zig");
     };
     pub const effects = struct {
         pub const eq = @import("dsp/effects/eq.zig");
@@ -1370,6 +1371,7 @@ test {
     _ = dsp.engines.wavetable;
     _ = dsp.engines.phase_distortion;
     _ = dsp.engines.genetic;
+    _ = dsp.engines.engine_interface;
     _ = dsp.effects.eq;
     _ = dsp.effects.reverb_fdn;
     _ = dsp.effects.delay;
