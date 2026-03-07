@@ -13,6 +13,7 @@ pub const engine = struct {
     pub const microtuning = @import("engine/microtuning.zig");
     pub const bench = @import("engine/bench.zig");
     pub const engine_core = @import("engine/engine.zig");
+    pub const optimal_transport = @import("engine/optimal_transport.zig");
 };
 
 pub const dsp = struct {
@@ -1330,6 +1331,7 @@ test {
     _ = engine.microtuning;
     _ = engine.bench;
     _ = engine.engine_core;
+    _ = engine.optimal_transport;
     _ = io.jack;
     _ = io.pipewire;
     _ = io.alsa;
