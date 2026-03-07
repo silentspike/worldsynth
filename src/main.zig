@@ -46,6 +46,7 @@ pub const dsp = struct {
         pub const reverb_fdn = @import("dsp/effects/reverb_fdn.zig");
         pub const delay = @import("dsp/effects/delay.zig");
         pub const chorus = @import("dsp/effects/chorus.zig");
+        pub const distortion = @import("dsp/effects/distortion.zig");
     };
     pub const utilities = struct {
         pub const dc_blocker = @import("dsp/utilities/dc_blocker.zig");
@@ -1360,6 +1361,7 @@ test {
     _ = dsp.effects.reverb_fdn;
     _ = dsp.effects.delay;
     _ = dsp.effects.chorus;
+    _ = dsp.effects.distortion;
     _ = dsp.utilities.dc_blocker;
     _ = dsp.utilities.oversampling;
     _ = dsp.sub_harmonics;
