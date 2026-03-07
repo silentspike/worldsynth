@@ -14,6 +14,7 @@ pub const engine = struct {
     pub const bench = @import("engine/bench.zig");
     pub const engine_core = @import("engine/engine.zig");
     pub const optimal_transport = @import("engine/optimal_transport.zig");
+    pub const voice_freeze = @import("engine/voice_freeze.zig");
 };
 
 pub const dsp = struct {
@@ -43,6 +44,7 @@ pub const dsp = struct {
         pub const physical = @import("dsp/engines/physical.zig");
         pub const wavetable = @import("dsp/engines/wavetable.zig");
         pub const phase_distortion = @import("dsp/engines/phase_distortion.zig");
+        pub const genetic = @import("dsp/engines/genetic.zig");
     };
     pub const effects = struct {
         pub const eq = @import("dsp/effects/eq.zig");
@@ -1333,6 +1335,7 @@ test {
     _ = engine.bench;
     _ = engine.engine_core;
     _ = engine.optimal_transport;
+    _ = engine.voice_freeze;
     _ = io.jack;
     _ = io.pipewire;
     _ = io.alsa;
@@ -1366,6 +1369,7 @@ test {
     _ = dsp.engines.physical;
     _ = dsp.engines.wavetable;
     _ = dsp.engines.phase_distortion;
+    _ = dsp.engines.genetic;
     _ = dsp.effects.eq;
     _ = dsp.effects.reverb_fdn;
     _ = dsp.effects.delay;
