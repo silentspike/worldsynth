@@ -1,21 +1,40 @@
 # CI benchmark shard set.
-# These shards contain benchmark tests with strict timing budgets and must run
-# in isolation (WS_TEST_JOBS=1) to prevent cross-shard CPU contention.
+# These shards contain benchmark tests with strict timing budget assertions
+# (e.g. expect(ns < budget)) and must run in isolation (WS_TEST_JOBS=1)
+# to prevent cross-shard CPU contention from causing false failures.
 
 engine.
-io.midi_learn.test
 io.midi.test
 io.osc.test
 io.cuda.test
 io.tensorrt.test
-dsp.voice.test
+io.cas.test
+io.flatbuf.test
+io.ctl_socket.test
+io.triple_buffer.test
+io.user_message.test
+io.ableton_link.test
 dsp.drift.test
+dsp.comb_filter.test
 dsp.formant_filter.test
 dsp.phaser_filter.test
 dsp.diode_filter.test
 dsp.waveshaper.test
+dsp.envelope.test
+dsp.lfo.test
+dsp.mod_matrix.test
+dsp.pitch_follower.test
+dsp.voice_manager.test
 dsp.engines.formant_engine.test
 dsp.engines.neural.test
+dsp.engines.genetic.test
+dsp.engines.physical.test
+dsp.engines.spectral.test
+dsp.engines.spectral_mask.test
 dsp.effects.eq.test
 dsp.utilities.dc_blocker.test
 dsp.utilities.oversampling.test
+platform.barrier.test
+platform.logging.test
+platform.ring_buffer.test
+platform.thread_pool.test

@@ -1,18 +1,36 @@
-# One substring filter per shard. Each shard is executed via:
-# zig test --test-filter <value>
+# Complete shard list for local test runs.
+# One substring filter per shard — each is executed via:
+#   zig test --test-filter <value>
 # Keep entries specific to avoid overlaps.
+#
+# Shards are split into two CI sets:
+#   - test-shards-ci-parallel.txt    (functional, no timing budgets)
+#   - test-shards-ci-bench-serial.txt (benchmarks with timing assertions)
 
+# -- engine (wildcard covers all engine.* modules) --
 main.test_0
 engine.
+
+# -- io --
 io.jack.test
 io.pipewire.test
 io.onnx_runtime.test
 io.cuda.test
 io.tensorrt.test
 io.audio_backend.test
+io.alsa.test
 io.osc.test
 io.midi_learn.test
 io.midi.test
+io.cas.test
+io.flatbuf.test
+io.ctl_socket.test
+io.rt.test
+io.triple_buffer.test
+io.user_message.test
+io.ableton_link.test
+
+# -- dsp core --
 dsp.voice.test
 dsp.drift.test
 dsp.oscillator.test
@@ -23,8 +41,47 @@ dsp.phaser_filter.test
 dsp.diode_filter.test
 dsp.ladder.test
 dsp.waveshaper.test
+dsp.chaos.test
+dsp.comb_filter.test
+dsp.envelope.test
+dsp.env_follower.test
+dsp.layer.test
+dsp.lfo.test
+dsp.mod_matrix.test
+dsp.mseg.test
+dsp.pitch_follower.test
+dsp.sub_harmonics.test
+dsp.voice_manager.test
+
+# -- dsp engines --
+dsp.engines.engine_interface.test
 dsp.engines.formant_engine.test
 dsp.engines.neural.test
+dsp.engines.genetic.test
+dsp.engines.phase_distortion.test
+dsp.engines.physical.test
+dsp.engines.spectral.test
+dsp.engines.spectral_mask.test
+dsp.engines.wavetable.test
+
+# -- dsp effects --
+dsp.effects.chorus.test
+dsp.effects.delay.test
+dsp.effects.distortion.test
 dsp.effects.eq.test
+dsp.effects.fx_chain.test
+dsp.effects.reverb_fdn.test
+dsp.effects.stereo.test
+dsp.effects.vocoder.test
+
+# -- dsp utilities --
 dsp.utilities.dc_blocker.test
 dsp.utilities.oversampling.test
+
+# -- platform --
+platform.barrier.test
+platform.clap_thread_pool.test
+platform.hw_detect.test
+platform.logging.test
+platform.ring_buffer.test
+platform.thread_pool.test
