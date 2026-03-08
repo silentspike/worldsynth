@@ -15,6 +15,7 @@ pub const engine = struct {
     pub const engine_core = @import("engine/engine.zig");
     pub const optimal_transport = @import("engine/optimal_transport.zig");
     pub const voice_freeze = @import("engine/voice_freeze.zig");
+    pub const preset_migration = @import("engine/preset_migration.zig");
 };
 
 pub const dsp = struct {
@@ -90,6 +91,8 @@ pub const io = struct {
     pub const ableton_link = @import("io/ableton_link.zig");
     pub const triple_buffer = @import("io/triple_buffer.zig");
     pub const ctl_socket = @import("io/ctl_socket.zig");
+    pub const flatbuf = @import("io/flatbuf.zig");
+    pub const cas = @import("io/cas.zig");
 };
 
 const build_options = @import("build_options");
@@ -1337,6 +1340,7 @@ test {
     _ = engine.engine_core;
     _ = engine.optimal_transport;
     _ = engine.voice_freeze;
+    _ = engine.preset_migration;
     _ = io.jack;
     _ = io.pipewire;
     _ = io.alsa;
@@ -1391,6 +1395,8 @@ test {
     _ = io.ableton_link;
     _ = io.triple_buffer;
     _ = io.ctl_socket;
+    _ = io.flatbuf;
+    _ = io.cas;
     _ = platform.ring_buffer;
     _ = platform.barrier;
     _ = platform.thread_pool;
