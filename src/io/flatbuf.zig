@@ -166,8 +166,11 @@ pub fn deserialize(buffer: []const u8) DeserializeError!PresetSchema {
 }
 
 // -- Tests (WP-069) -----------------------------------------------------------
+// IMPORTANT: Every test/benchmark MUST start with `var t = try std.time.Timer.start();`
+// and print elapsed time at the end: `[{d:.2}ms]`. This is mandatory for all new tests.
 
 test "WP-069 AC-1: serialize/deserialize roundtrip" {
+    var t = try std.time.Timer.start();
     var preset = PresetSchema.init();
 
     // Populate with representative data.
@@ -201,21 +204,27 @@ test "WP-069 AC-1: serialize/deserialize roundtrip" {
     const rest_bytes: *const [PAYLOAD_SIZE]u8 = @ptrCast(&restored);
     try std.testing.expectEqualSlices(u8, orig_bytes, rest_bytes);
 
-    std.debug.print("\n[WP-069] AC-1: roundtrip PASS ({}B)\n", .{serialized.len});
+    const elapsed = @as(f64, @floatFromInt(t.read())) / 1_000_000.0;
+    std.debug.print("\n[WP-069] AC-1: roundtrip PASS ({}B) [{d:.2}ms]\n", .{ serialized.len, elapsed });
 }
 
 test "WP-069 AC-2: serialized size under 10KB" {
+    var t = try std.time.Timer.start();
     try std.testing.expect(SERIALIZED_SIZE < 10240);
-    std.debug.print("\n[WP-069] AC-2: size={}B < 10240B PASS\n", .{SERIALIZED_SIZE});
+    const elapsed = @as(f64, @floatFromInt(t.read())) / 1_000_000.0;
+    std.debug.print("\n[WP-069] AC-2: size={}B < 10240B PASS [{d:.2}ms]\n", .{ SERIALIZED_SIZE, elapsed });
 }
 
 test "WP-069 AC-3: version field correctly set" {
+    var t = try std.time.Timer.start();
     const preset = PresetSchema.init();
     try std.testing.expectEqual(SCHEMA_VERSION, preset.version);
-    std.debug.print("\n[WP-069] AC-3: version={} PASS\n", .{preset.version});
+    const elapsed = @as(f64, @floatFromInt(t.read())) / 1_000_000.0;
+    std.debug.print("\n[WP-069] AC-3: version={} PASS [{d:.2}ms]\n", .{ preset.version, elapsed });
 }
 
 test "WP-069 AC-N1: corrupt magic returns InvalidMagic" {
+    var t = try std.time.Timer.start();
     var preset = PresetSchema.init();
     var buf: [SERIALIZED_SIZE]u8 = undefined;
     _ = try serialize(&preset, &buf);
@@ -224,10 +233,12 @@ test "WP-069 AC-N1: corrupt magic returns InvalidMagic" {
     buf[0] = 'X';
     const result = deserialize(&buf);
     try std.testing.expectError(error.InvalidMagic, result);
-    std.debug.print("\n[WP-069] AC-N1: InvalidMagic PASS\n", .{});
+    const elapsed = @as(f64, @floatFromInt(t.read())) / 1_000_000.0;
+    std.debug.print("\n[WP-069] AC-N1: InvalidMagic PASS [{d:.2}ms]\n", .{elapsed});
 }
 
 test "WP-069 AC-N2: small buffer returns BufferTooSmall" {
+    var t = try std.time.Timer.start();
     var preset = PresetSchema.init();
     var small_buf: [8]u8 = undefined;
     const ser_result = serialize(&preset, &small_buf);
@@ -236,10 +247,12 @@ test "WP-069 AC-N2: small buffer returns BufferTooSmall" {
     // Deserialize with small buffer.
     const deser_result = deserialize(&small_buf);
     try std.testing.expectError(error.BufferTooSmall, deser_result);
-    std.debug.print("\n[WP-069] AC-N2: BufferTooSmall PASS\n", .{});
+    const elapsed = @as(f64, @floatFromInt(t.read())) / 1_000_000.0;
+    std.debug.print("\n[WP-069] AC-N2: BufferTooSmall PASS [{d:.2}ms]\n", .{elapsed});
 }
 
 test "WP-069 AC-N3: corrupted payload returns ChecksumMismatch" {
+    var t = try std.time.Timer.start();
     var preset = PresetSchema.init();
     var buf: [SERIALIZED_SIZE]u8 = undefined;
     _ = try serialize(&preset, &buf);
@@ -248,10 +261,12 @@ test "WP-069 AC-N3: corrupted payload returns ChecksumMismatch" {
     buf[HEADER_SIZE + 10] ^= 0xFF;
     const result = deserialize(&buf);
     try std.testing.expectError(error.ChecksumMismatch, result);
-    std.debug.print("\n[WP-069] AC-N3: ChecksumMismatch PASS\n", .{});
+    const elapsed = @as(f64, @floatFromInt(t.read())) / 1_000_000.0;
+    std.debug.print("\n[WP-069] AC-N3: ChecksumMismatch PASS [{d:.2}ms]\n", .{elapsed});
 }
 
 test "WP-069 AC-B1: serialize/deserialize benchmark" {
+    var t = try std.time.Timer.start();
     var preset = PresetSchema.init();
     preset.layers[0].engine_params[0] = 440.0;
     for (0..128) |i| preset.layers[0].engine_params[i] = @floatFromInt(i);
@@ -290,8 +305,9 @@ test "WP-069 AC-B1: serialize/deserialize benchmark" {
         .ReleaseFast, .ReleaseSmall => 1_000_000,
     };
 
-    std.debug.print("\n[WP-069] AC-B1: serialize={d}ns, deserialize={d}ns, size={}B (budget: {d}ns, mode={s})\n", .{
-        ser_ns, deser_ns, SERIALIZED_SIZE, ser_budget, @tagName(builtin.mode),
+    const elapsed = @as(f64, @floatFromInt(t.read())) / 1_000_000.0;
+    std.debug.print("\n[WP-069] AC-B1: serialize={d}ns, deserialize={d}ns, size={}B (budget: {d}ns, mode={s}) [{d:.2}ms total]\n", .{
+        ser_ns, deser_ns, SERIALIZED_SIZE, ser_budget, @tagName(builtin.mode), elapsed,
     });
 
     try std.testing.expect(ser_ns < ser_budget);

@@ -34,8 +34,11 @@ fn migrate_v1_to_v2(preset: *flatbuf.PresetSchema) void {
 }
 
 // -- Tests (WP-070 Migration) -------------------------------------------------
+// IMPORTANT: Every test/benchmark MUST start with `var t = try std.time.Timer.start();`
+// and print elapsed time at the end: `[{d:.2}ms]`. This is mandatory for all new tests.
 
 test "WP-070 AC-2: v1 to v2 migration sets defaults" {
+    var t = try std.time.Timer.start();
     // Simulate a v1 preset (version=1, v2 fields zeroed).
     var preset = flatbuf.PresetSchema.init();
     preset.version = 1;
@@ -50,19 +53,23 @@ test "WP-070 AC-2: v1 to v2 migration sets defaults" {
     // Other fields unchanged.
     try std.testing.expectEqual(@as(f32, 1.0), preset.master_volume);
 
-    std.debug.print("\n[WP-070] AC-2: v1→v2 migration PASS\n", .{});
+    const elapsed = @as(f64, @floatFromInt(t.read())) / 1_000_000.0;
+    std.debug.print("\n[WP-070] AC-2: v1->v2 migration PASS [{d:.2}ms]\n", .{elapsed});
 }
 
 test "WP-070 AC-N1: unknown version returns error" {
+    var t = try std.time.Timer.start();
     var preset = flatbuf.PresetSchema.init();
     preset.version = 99;
 
     const result = migrate(&preset);
     try std.testing.expectError(error.UnknownVersion, result);
-    std.debug.print("\n[WP-070] AC-N1: UnknownVersion PASS\n", .{});
+    const elapsed = @as(f64, @floatFromInt(t.read())) / 1_000_000.0;
+    std.debug.print("\n[WP-070] AC-N1: UnknownVersion PASS [{d:.2}ms]\n", .{elapsed});
 }
 
 test "WP-070 migration: already current version is no-op" {
+    var t = try std.time.Timer.start();
     var preset = flatbuf.PresetSchema.init();
     const original_volume = preset.master_volume;
 
@@ -71,5 +78,6 @@ test "WP-070 migration: already current version is no-op" {
     // Nothing changed.
     try std.testing.expectEqual(CURRENT_VERSION, preset.version);
     try std.testing.expectEqual(original_volume, preset.master_volume);
-    std.debug.print("\n[WP-070] migration no-op PASS\n", .{});
+    const elapsed = @as(f64, @floatFromInt(t.read())) / 1_000_000.0;
+    std.debug.print("\n[WP-070] migration no-op PASS [{d:.2}ms]\n", .{elapsed});
 }

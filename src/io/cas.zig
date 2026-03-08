@@ -104,6 +104,8 @@ pub const ContentStore = struct {
 };
 
 // -- Tests (WP-070 CAS) ------------------------------------------------------
+// IMPORTANT: Every test/benchmark MUST start with `var t = try std.time.Timer.start();`
+// and print elapsed time at the end: `[{d:.2}ms]`. This is mandatory for all new tests.
 
 const TEST_DIR = "/tmp/worldsynth-cas-test";
 
@@ -112,6 +114,7 @@ fn cleanup_test_dir() void {
 }
 
 test "WP-070 AC-1: same data produces same hash" {
+    var t = try std.time.Timer.start();
     const data_a = "hello worldsynth preset data";
     const data_b = "hello worldsynth preset data";
     const data_c = "different preset data";
@@ -126,10 +129,12 @@ test "WP-070 AC-1: same data produces same hash" {
     // Different data → different hash.
     try std.testing.expect(!std.mem.eql(u8, &hash_a, &hash_c));
 
-    std.debug.print("\n[WP-070] AC-1: deterministic hash PASS\n", .{});
+    const elapsed = @as(f64, @floatFromInt(t.read())) / 1_000_000.0;
+    std.debug.print("\n[WP-070] AC-1: deterministic hash PASS [{d:.2}ms]\n", .{elapsed});
 }
 
 test "WP-070 AC-3: store/load roundtrip" {
+    var t = try std.time.Timer.start();
     cleanup_test_dir();
     defer cleanup_test_dir();
 
@@ -150,10 +155,12 @@ test "WP-070 AC-3: store/load roundtrip" {
     const hash_val2 = try cas.store(data);
     try std.testing.expectEqualSlices(u8, &hash_val, &hash_val2);
 
-    std.debug.print("\n[WP-070] AC-3: store/load roundtrip PASS\n", .{});
+    const elapsed = @as(f64, @floatFromInt(t.read())) / 1_000_000.0;
+    std.debug.print("\n[WP-070] AC-3: store/load roundtrip PASS [{d:.2}ms]\n", .{elapsed});
 }
 
 test "WP-070 dedup: 100 identical stores produce 1 entry" {
+    var t = try std.time.Timer.start();
     cleanup_test_dir();
     defer cleanup_test_dir();
 
@@ -168,10 +175,12 @@ test "WP-070 dedup: 100 identical stores produce 1 entry" {
     }
     try std.testing.expect(cas.exists(first_hash));
 
-    std.debug.print("\n[WP-070] dedup: 100 stores → same hash PASS\n", .{});
+    const elapsed = @as(f64, @floatFromInt(t.read())) / 1_000_000.0;
+    std.debug.print("\n[WP-070] dedup: 100 stores -> same hash PASS [{d:.2}ms]\n", .{elapsed});
 }
 
 test "WP-070 AC-B1: CAS benchmarks" {
+    var t = try std.time.Timer.start();
     cleanup_test_dir();
     defer cleanup_test_dir();
 
@@ -226,8 +235,9 @@ test "WP-070 AC-B1: CAS benchmarks" {
         .ReleaseFast, .ReleaseSmall => 50_000_000, // 50ms (2MB file write)
     };
 
-    std.debug.print("\n[WP-070] AC-B1: hash={d}ns (budget {d}ns), lookup={d}ns (budget {d}ns), store={d}ns (budget {d}ns), mode={s}\n", .{
-        hash_ns, hash_budget, lookup_ns, lookup_budget, store_ns, store_budget, @tagName(builtin.mode),
+    const elapsed = @as(f64, @floatFromInt(t.read())) / 1_000_000.0;
+    std.debug.print("\n[WP-070] AC-B1: hash={d}ns (budget {d}ns), lookup={d}ns (budget {d}ns), store={d}ns (budget {d}ns), mode={s} [{d:.2}ms total]\n", .{
+        hash_ns, hash_budget, lookup_ns, lookup_budget, store_ns, store_budget, @tagName(builtin.mode), elapsed,
     });
 
     try std.testing.expect(hash_ns < hash_budget);
