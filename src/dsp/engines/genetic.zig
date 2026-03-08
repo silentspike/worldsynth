@@ -1,5 +1,7 @@
 const std = @import("std");
 const builtin = @import("builtin");
+const build_options = @import("build_options");
+const onnx_runtime = @import("../../io/onnx_runtime.zig");
 
 // -- Genetic Quick Breed (WP-066) --------------------------------------------
 // Parameter-level crossover and mutation for evolutionary sound design.
@@ -196,6 +198,150 @@ pub fn breed(
     for (0..MAX_CHILDREN) |child_idx| {
         do_crossover(parent_a, parent_b, &children[child_idx], param_count, crossover_type, constraints, &rng);
         mutate(&children[child_idx], param_count, mutation_rate, constraints, &rng);
+    }
+}
+
+// -- Deep Breed VAE (WP-067) --------------------------------------------------
+// Latent-space navigation via ONNX VAE Encoder/Decoder.
+// Degraded mode: identity mapping + linear parameter interpolation.
+
+pub const LATENT_DIM: usize = 32;
+
+pub const VaeBreeder = struct {
+    encoder: ?onnx_runtime.OnnxSession,
+    decoder: ?onnx_runtime.OnnxSession,
+    degraded: bool,
+
+    pub fn init(
+        encoder_path: ?[*:0]const u8,
+        decoder_path: ?[*:0]const u8,
+    ) VaeBreeder {
+        if (comptime !build_options.enable_neural) {
+            return .{ .encoder = null, .decoder = null, .degraded = true };
+        }
+
+        const enc = if (encoder_path) |p|
+            onnx_runtime.OnnxSession.init(p) catch null
+        else
+            null;
+
+        const dec = if (decoder_path) |p|
+            onnx_runtime.OnnxSession.init(p) catch null
+        else
+            null;
+
+        const is_degraded = enc == null or dec == null;
+        // If one session succeeded but the other failed, clean up the successful one.
+        if (is_degraded) {
+            if (enc) |*e| {
+                var session = e.*;
+                session.deinit();
+            }
+            if (dec) |*d| {
+                var session = d.*;
+                session.deinit();
+            }
+            return .{ .encoder = null, .decoder = null, .degraded = true };
+        }
+
+        return .{ .encoder = enc, .decoder = dec, .degraded = false };
+    }
+
+    pub fn deinit(self: *VaeBreeder) void {
+        if (self.encoder) |*enc| enc.deinit();
+        if (self.decoder) |*dec| dec.deinit();
+        self.encoder = null;
+        self.decoder = null;
+    }
+
+    /// Encode parameters to latent space.
+    /// Degraded: identity mapping (first LATENT_DIM params, rest truncated).
+    pub fn encode(self: *VaeBreeder, params: *const [MAX_PARAMS]f32) [LATENT_DIM]f32 {
+        if (self.encoder) |*enc| {
+            var latent: [LATENT_DIM]f32 = .{0.0} ** LATENT_DIM;
+            enc.run(params, &latent) catch {
+                // Fallback to identity on runtime error.
+                return identity_encode(params);
+            };
+            return latent;
+        }
+        return identity_encode(params);
+    }
+
+    /// Decode latent vector back to parameters.
+    /// Degraded: identity mapping (latent dims become first params).
+    pub fn decode(self: *VaeBreeder, latent: *const [LATENT_DIM]f32) [MAX_PARAMS]f32 {
+        if (self.decoder) |*dec| {
+            var params: [MAX_PARAMS]f32 = .{0.0} ** MAX_PARAMS;
+            dec.run(latent, &params) catch {
+                return identity_decode(latent);
+            };
+            return params;
+        }
+        return identity_decode(latent);
+    }
+};
+
+fn identity_encode(params: *const [MAX_PARAMS]f32) [LATENT_DIM]f32 {
+    var latent: [LATENT_DIM]f32 = .{0.0} ** LATENT_DIM;
+    @memcpy(&latent, params[0..LATENT_DIM]);
+    return latent;
+}
+
+fn identity_decode(latent: *const [LATENT_DIM]f32) [MAX_PARAMS]f32 {
+    var params: [MAX_PARAMS]f32 = .{0.0} ** MAX_PARAMS;
+    @memcpy(params[0..LATENT_DIM], latent);
+    return params;
+}
+
+/// Interpolate between two latent vectors. Pure math, no ONNX needed.
+pub fn interpolate_latent(
+    a: *const [LATENT_DIM]f32,
+    b: *const [LATENT_DIM]f32,
+    t: f32,
+) [LATENT_DIM]f32 {
+    const clamped = std.math.clamp(t, 0.0, 1.0);
+    const inv = 1.0 - clamped;
+    var result: [LATENT_DIM]f32 = undefined;
+    for (0..LATENT_DIM) |i| {
+        result[i] = @mulAdd(f32, clamped, b[i], inv * a[i]);
+    }
+    return result;
+}
+
+/// Convenience: encode two parents, interpolate at even spacing, decode.
+/// Produces MAX_CHILDREN child parameter sets.
+/// Falls back to linear parameter interpolation when degraded.
+pub fn deep_breed(
+    breeder: *VaeBreeder,
+    parent_a: *const [MAX_PARAMS]f32,
+    parent_b: *const [MAX_PARAMS]f32,
+    children: *[MAX_CHILDREN][MAX_PARAMS]f32,
+    param_count: usize,
+) void {
+    if (breeder.degraded) {
+        // Linear parameter interpolation fallback.
+        const count = @min(param_count, MAX_PARAMS);
+        for (0..MAX_CHILDREN) |ci| {
+            const t: f32 = @as(f32, @floatFromInt(ci + 1)) / @as(f32, @floatFromInt(MAX_CHILDREN + 1));
+            for (0..count) |p| {
+                children[ci][p] = @mulAdd(f32, t, parent_b[p], (1.0 - t) * parent_a[p]);
+            }
+            // Zero remaining params.
+            for (count..MAX_PARAMS) |p| {
+                children[ci][p] = 0.0;
+            }
+        }
+        return;
+    }
+
+    const latent_a = breeder.encode(parent_a);
+    const latent_b = breeder.encode(parent_b);
+
+    for (0..MAX_CHILDREN) |ci| {
+        const t: f32 = @as(f32, @floatFromInt(ci + 1)) / @as(f32, @floatFromInt(MAX_CHILDREN + 1));
+        const latent = interpolate_latent(&latent_a, &latent_b, t);
+        children[ci] = breeder.decode(&latent);
     }
 }
 
@@ -404,4 +550,173 @@ test "benchmark: breed 8 children (200 params)" {
         @tagName(builtin.mode),
     });
     try std.testing.expect(ns_per_breed < budget);
+}
+
+// -- WP-067: Deep Breed VAE Tests ---------------------------------------------
+
+test "WP-067 AC-1: encode/decode identity in degraded mode" {
+    var breeder = VaeBreeder.init(null, null);
+    defer breeder.deinit();
+    try std.testing.expect(breeder.degraded);
+
+    var params: [MAX_PARAMS]f32 = undefined;
+    for (0..MAX_PARAMS) |i| {
+        params[i] = @as(f32, @floatFromInt(i)) / @as(f32, @floatFromInt(MAX_PARAMS));
+    }
+
+    const latent = breeder.encode(&params);
+    const decoded = breeder.decode(&latent);
+
+    // In degraded mode: first LATENT_DIM params round-trip exactly.
+    for (0..LATENT_DIM) |i| {
+        try std.testing.expectEqual(params[i], decoded[i]);
+    }
+    // Remaining params are zeroed in degraded decode.
+    for (LATENT_DIM..MAX_PARAMS) |i| {
+        try std.testing.expectEqual(@as(f32, 0.0), decoded[i]);
+    }
+    std.debug.print("\n[WP-067] AC-1: encode→decode identity in degraded mode: PASS\n", .{});
+}
+
+test "WP-067 AC-2: interpolate_latent produces midpoint" {
+    var a: [LATENT_DIM]f32 = .{0.0} ** LATENT_DIM;
+    var b: [LATENT_DIM]f32 = .{1.0} ** LATENT_DIM;
+    // Set some varying values.
+    for (0..LATENT_DIM) |i| {
+        a[i] = @as(f32, @floatFromInt(i)) / @as(f32, @floatFromInt(LATENT_DIM));
+        b[i] = 1.0 - a[i];
+    }
+
+    const mid = interpolate_latent(&a, &b, 0.5);
+
+    // Midpoint should differ from both a and b.
+    var differs_a = false;
+    var differs_b = false;
+    for (0..LATENT_DIM) |i| {
+        if (mid[i] != a[i]) differs_a = true;
+        if (mid[i] != b[i]) differs_b = true;
+        // Midpoint should be approximately (a+b)/2.
+        const expected = (a[i] + b[i]) * 0.5;
+        try std.testing.expectApproxEqAbs(expected, mid[i], 1e-6);
+    }
+    try std.testing.expect(differs_a);
+    try std.testing.expect(differs_b);
+
+    // Boundary: t=0 → a, t=1 → b.
+    const at_zero = interpolate_latent(&a, &b, 0.0);
+    const at_one = interpolate_latent(&a, &b, 1.0);
+    for (0..LATENT_DIM) |i| {
+        try std.testing.expectEqual(a[i], at_zero[i]);
+        try std.testing.expectEqual(b[i], at_one[i]);
+    }
+    std.debug.print("\n[WP-067] AC-2: interpolate produces correct midpoint: PASS\n", .{});
+}
+
+test "WP-067 AC-3: deep_breed degraded produces linear interpolation" {
+    var breeder = VaeBreeder.init(null, null);
+    defer breeder.deinit();
+    try std.testing.expect(breeder.degraded);
+
+    var parent_a: [MAX_PARAMS]f32 = .{0.0} ** MAX_PARAMS;
+    var parent_b: [MAX_PARAMS]f32 = .{1.0} ** MAX_PARAMS;
+
+    var children: [MAX_CHILDREN][MAX_PARAMS]f32 = undefined;
+    deep_breed(&breeder, &parent_a, &parent_b, &children, 100);
+
+    // Each child should be a linear interpolation at t = (ci+1)/(MAX_CHILDREN+1).
+    for (0..MAX_CHILDREN) |ci| {
+        const t: f32 = @as(f32, @floatFromInt(ci + 1)) / @as(f32, @floatFromInt(MAX_CHILDREN + 1));
+        for (0..100) |p| {
+            const expected = t * parent_b[p] + (1.0 - t) * parent_a[p];
+            try std.testing.expectApproxEqAbs(expected, children[ci][p], 1e-6);
+        }
+    }
+    std.debug.print("\n[WP-067] AC-3: deep_breed degraded → linear interpolation: PASS\n", .{});
+}
+
+test "WP-067 AC-N1: VaeBreeder init/deinit without crash" {
+    // No model paths → degraded, no crash.
+    var breeder = VaeBreeder.init(null, null);
+    try std.testing.expect(breeder.degraded);
+    try std.testing.expect(breeder.encoder == null);
+    try std.testing.expect(breeder.decoder == null);
+    breeder.deinit();
+    // Double deinit must not crash.
+    breeder.deinit();
+    std.debug.print("\n[WP-067] AC-N1: graceful degradation without model: PASS\n", .{});
+}
+
+test "benchmark: deep_breed 8 children (degraded)" {
+    var breeder = VaeBreeder.init(null, null);
+    defer breeder.deinit();
+
+    var parent_a: [MAX_PARAMS]f32 = undefined;
+    var parent_b: [MAX_PARAMS]f32 = undefined;
+    for (0..MAX_PARAMS) |i| {
+        parent_a[i] = @as(f32, @floatFromInt(i)) / @as(f32, @floatFromInt(MAX_PARAMS));
+        parent_b[i] = 1.0 - parent_a[i];
+    }
+    var children: [MAX_CHILDREN][MAX_PARAMS]f32 = undefined;
+
+    // Warmup
+    for (0..100) |_| {
+        deep_breed(&breeder, &parent_a, &parent_b, &children, 200);
+    }
+
+    const iterations = benchIterations(5_000, 50_000, 200_000);
+    var timer = std.time.Timer.start() catch unreachable;
+    for (0..iterations) |_| {
+        deep_breed(&breeder, &parent_a, &parent_b, &children, 200);
+        std.mem.doNotOptimizeAway(&children);
+    }
+    const ns_per_breed = timer.read() / iterations;
+
+    const budget = benchBudget(
+        5_000_000, // 5ms debug
+        100_000, // 100µs release-safe
+        100_000, // 100µs release-fast
+    );
+    std.debug.print("\n[WP-067] deep_breed 8 children (degraded): {}ns ({d:.2}µs, budget: {}ns, mode={s})\n", .{
+        ns_per_breed,
+        @as(f64, @floatFromInt(ns_per_breed)) / 1000.0,
+        budget,
+        @tagName(builtin.mode),
+    });
+    try std.testing.expect(ns_per_breed < budget);
+}
+
+test "benchmark: interpolate_latent" {
+    var a: [LATENT_DIM]f32 = undefined;
+    var b: [LATENT_DIM]f32 = undefined;
+    for (0..LATENT_DIM) |i| {
+        a[i] = @as(f32, @floatFromInt(i)) / @as(f32, @floatFromInt(LATENT_DIM));
+        b[i] = 1.0 - a[i];
+    }
+
+    // Warmup
+    for (0..1000) |_| {
+        const r = interpolate_latent(&a, &b, 0.5);
+        std.mem.doNotOptimizeAway(&r);
+    }
+
+    const iterations = benchIterations(100_000, 1_000_000, 5_000_000);
+    var timer = std.time.Timer.start() catch unreachable;
+    for (0..iterations) |iter| {
+        const t: f32 = @as(f32, @floatFromInt(iter % 100)) / 100.0;
+        const r = interpolate_latent(&a, &b, t);
+        std.mem.doNotOptimizeAway(&r);
+    }
+    const ns_per_interp = timer.read() / iterations;
+
+    const budget = benchBudget(
+        50_000, // 50µs debug
+        1_000, // 1µs release-safe
+        1_000, // 1µs release-fast
+    );
+    std.debug.print("\n[WP-067] interpolate_latent: {}ns (budget: {}ns, mode={s})\n", .{
+        ns_per_interp,
+        budget,
+        @tagName(builtin.mode),
+    });
+    try std.testing.expect(ns_per_interp < budget);
 }
